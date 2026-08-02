@@ -380,18 +380,24 @@ input:focus, select:focus, textarea:focus{outline:2px solid var(--gold);outline-
   .sidebar, .page-head .head-actions, .no-print, .toolbar, #toast, .bottom-nav, .fab, .mobile-topbar{display:none !important;}
   .main{padding:0;max-width:100%;}
   body{background:#fff;}
-  .invoice-sheet{border:none;box-shadow:none;border-radius:0;max-width:100%;margin:0;}
   #app{display:block;}
 
-  /* Fußzeile wie auf echtem Briefpapier: fest am unteren Rand jeder gedruckten Seite */
-  .invoice-real-footer{
-    position:fixed;
-    bottom:0;
-    left:0;
-    right:0;
-    margin-top:0;
+  /* Rechnungsblatt exakt auf A4-Innenhöhe bringen und Fußzeile per Flexbox
+     zuverlässig an den unteren Rand drücken (funktioniert in jedem Browser-
+     PDF-Export, anders als position:fixed) */
+  .invoice-sheet{
+    border:none;box-shadow:none;border-radius:0;max-width:100%;margin:0;
+    display:flex;flex-direction:column;
+    min-height:273mm; /* A4 (297mm) minus 2x12mm Seitenrand */
   }
-  .invoice-body{padding-bottom:130px;}
+  .invoice-body{
+    display:flex;flex-direction:column;flex:1;
+    padding-bottom:0;
+  }
+  .invoice-real-footer{
+    margin-top:auto;
+    padding-top:30px;
+  }
 }
 
 .dash-charts{display:grid;grid-template-columns:1.4fr 1fr;gap:20px;}
