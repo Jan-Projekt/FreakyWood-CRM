@@ -616,19 +616,31 @@ async function loadData() {
       .select('value')
       .eq('key', STORAGE_KEY)
       .maybeSingle();
-    if (error) throw error;
+
+    if (error) {
+      // Echter Fehler (Rechte/Netzwerk) — NIEMALS in diesem Fall überschreiben,
+      // sonst gehen bestehende Daten verloren. Stattdessen deutlich warnen.
+      console.error("Fehler beim Laden aus Supabase:", error);
+      DB = JSON.parse(JSON.stringify(SEED_DATA));
+      DB.__loadError = error.message || "Verbindung zur Datenbank fehlgeschlagen.";
+      return;
+    }
+
     if (data && data.value) {
       DB = data.value;
       if (DB.settings && DB.settings.pin === undefined) DB.settings.pin = "";
       if (DB.settings && DB.settings.masterPin === undefined) DB.settings.masterPin = "1234";
       return;
     }
+
+    // Kein Fehler, aber wirklich noch keine Zeile vorhanden -> einmaliger Erststart
+    DB = JSON.parse(JSON.stringify(SEED_DATA));
+    await saveData(true);
   } catch (e) {
-    console.warn("Kein bestehender Datensatz gefunden oder Verbindung fehlgeschlagen, initialisiere mit Startdaten.", e);
+    console.error("Verbindung zu Supabase fehlgeschlagen:", e);
+    DB = JSON.parse(JSON.stringify(SEED_DATA));
+    DB.__loadError = e && e.message ? e.message : "Verbindung zur Datenbank fehlgeschlagen.";
   }
-  // First run: seed with historical 2026 data
-  DB = JSON.parse(JSON.stringify(SEED_DATA));
-  await saveData(true);
 }
 
 async function saveData(silent) {
@@ -741,12 +753,20 @@ function render() {
   app.innerHTML = `
     ${renderSidebar()}
     ${renderMobileTopbar()}
-    <div class="main">${renderMain()}</div>
+    <div class="main">${DB.__loadError ? renderConnectionError() : ""}${renderMain()}</div>
     ${renderBottomNav()}
     ${renderFab()}
   `;
   attachGlobalHandlers();
   runPostRenderHooks();
+}
+
+function renderConnectionError() {
+  return `
+  <div class="card" style="border-left:4px solid var(--rust);background:var(--rust-tint);">
+    <h2 style="color:var(--rust);margin-bottom:6px;">Keine Verbindung zur Datenbank</h2>
+    <p style="font-size:13px;margin:0;">Deine echten Daten konnten nicht geladen werden (Grund: <span class="mono">${esc(DB.__loadError)}</span>). Du siehst gerade nur Beispieldaten. <b>Bitte hier nichts eintragen</b>, sonst geht es verloren — lade die Seite neu, sobald die Verbindung wieder steht, oder prüfe die Supabase-Berechtigungen.</p>
+  </div>`;
 }
 
 function renderLockScreen() {
