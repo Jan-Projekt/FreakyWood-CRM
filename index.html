@@ -358,31 +358,38 @@ input:focus, select:focus, textarea:focus{outline:2px solid var(--gold);outline-
 .chip{display:inline-block;background:var(--amber-tint);color:var(--amber-dark);border-radius:20px;padding:2px 10px;font-size:11.5px;font-weight:600;}
 
 /* Invoice print styling — echtes Briefpapier als Hintergrund-Layer,
-   Rechnungsdaten werden nur noch darüber platziert */
+   Rechnungsdaten werden nur noch darüber platziert.
+   Bewusst einfach gehalten: feste mm-Maße (identisch auf Bildschirm und
+   beim Drucken), kein aspect-ratio, kein Flexbox-Prozent-Mix - das hat
+   sich als zu fragil erwiesen. Absender-Adresse per position:absolute
+   fest an die Ecke unter dem Logo gesetzt. */
 .invoice-sheet{
-  background-size:100% 100%;
+  position:relative;
+  width:210mm;
+  min-height:297mm;
+  margin:0 auto;
+  background-size:210mm 297mm;
   background-repeat:no-repeat;
+  background-position:top left;
   background-color:#fff;
   color:#241609;
-  padding:0;
-  border-radius:8px;
-  overflow:visible;
   border:1px solid var(--line-soft);
   box-shadow:var(--shadow-lg);
+  border-radius:8px;
+  overflow:visible;
   font-family: Georgia, 'Iowan Old Style', serif;
-  width:100%;
-  max-width:780px;
-  aspect-ratio:210/297;
-  margin:0 auto;
-  position:relative;
   box-sizing:border-box;
 }
-.invoice-body{padding:10.5% 8.6% 22%;height:100%;box-sizing:border-box;}
-.invoice-topline{display:flex;justify-content:space-between;align-items:flex-start;gap:20px;}
+.invoice-body{position:relative;padding:20mm 18mm 55mm;box-sizing:border-box;}
 .invoice-meta h1{font-size:19px;margin:0 0 4px;letter-spacing:.02em;}
 .invoice-meta .date{font-size:12.5px;color:#5C4A3A;}
-.invoice-sender{text-align:right;font-size:11px;color:#5C4A3A;line-height:1.5;max-width:150px;margin-top:9.5%;}
-.invoice-addr-block{margin-top:20px;}
+.invoice-sender{
+  position:absolute;
+  top:20mm;right:18mm;
+  text-align:right;max-width:45mm;
+  font-size:11px;color:#5C4A3A;line-height:1.5;
+}
+.invoice-addr-block{margin-top:24px;}
 .invoice-addr-block .label{font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:#8A765F;margin-bottom:4px;}
 .invoice-addr-block .addr{font-size:13.5px;line-height:1.5;}
 .invoice-terms{margin-top:16px;font-size:12px;color:#5C4A3A;}
@@ -407,15 +414,10 @@ input:focus, select:focus, textarea:focus{outline:2px solid var(--gold);outline-
   body{background:#fff;}
   #app{display:block;}
 
-  /* Briefpapier-Hintergrund exakt auf eine A4-Seite bringen (volle
-     210x297mm, ohne @page-Rand, damit das Bild nicht verzerrt wird -
-     die sichtbaren Ränder entstehen durch das Innenabstand-Polster von
-     invoice-body). Bei sehr langen Rechnungen läuft der Text einfach auf
-     einer zweiten, dann weißen Seite weiter - normales Druckverhalten. */
+  /* Gleiche feste 210x297mm wie am Bildschirm — dadurch keine
+     Umrechnung nötig, das Bild sitzt exakt gleich wie in der Vorschau. */
   .invoice-sheet{
     border:none;box-shadow:none;border-radius:0;
-    width:210mm;height:297mm;
-    aspect-ratio:unset;
     margin:0;
     print-color-adjust:exact;
     -webkit-print-color-adjust:exact;
@@ -1376,14 +1378,12 @@ function renderInvoiceDetail(id) {
 
   <div class="invoice-sheet" id="invoiceSheet" style="background-image:url('${LETTERHEAD_BG}');">
     <div class="invoice-body">
-      <div class="invoice-topline">
-        <div class="invoice-meta">
-          <h1>Rechnung Nr. ${esc(inv.number)}</h1>
-          <div class="date">Rechnungsdatum: ${fmtDate(inv.date)}</div>
-        </div>
-        <div class="invoice-sender">
-          ${esc(comp.name)}<br>${esc(comp.street)}<br>${esc(comp.zip)} ${esc(comp.city)}
-        </div>
+      <div class="invoice-meta">
+        <h1>Rechnung Nr. ${esc(inv.number)}</h1>
+        <div class="date">Rechnungsdatum: ${fmtDate(inv.date)}</div>
+      </div>
+      <div class="invoice-sender">
+        ${esc(comp.name)}<br>${esc(comp.street)}<br>${esc(comp.zip)} ${esc(comp.city)}
       </div>
 
       <div class="invoice-addr-block">
