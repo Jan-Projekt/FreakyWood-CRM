@@ -1097,7 +1097,6 @@ function renderDashboard() {
 
   const totalRevenue = invs.reduce((s, i) => s + invoiceTotal(i), 0);
   const openAmount = invs.filter(i => i.status === "offen").reduce((s, i) => s + invoiceTotal(i), 0);
-  const avgInvoice = invs.length ? totalRevenue / invs.length : 0;
 
   // revenue by month
   const monthNames = ["Jan","Feb","Mär","Apr","Mai","Jun","Jul","Aug","Sep","Okt","Nov","Dez"];
@@ -1123,6 +1122,12 @@ function renderDashboard() {
   const overdueInvs = DB.invoices.filter(isOverdue);
   const overdueAmount = overdueInvs.reduce((s,i)=>s+invoiceTotal(i),0);
 
+  // Aufträge, die gerade aktiv laufen (unabhängig vom Jahresfilter)
+  const activeOrders = DB.orders
+    .filter(o => o.status === "offen" || o.status === "in_bearbeitung")
+    .sort((a,b) => a.date.localeCompare(b.date));
+  const inProgressCount = DB.orders.filter(o => o.status === "in_bearbeitung").length;
+
   return `
   <div class="page-head">
     <div>
@@ -1140,7 +1145,24 @@ function renderDashboard() {
     <div class="kpi-card"><div class="label">Umsatz ${esc(selYear)}</div><div class="value mono">${fmtCurrency(totalRevenue)}</div></div>
     <div class="kpi-card kpi-clickable" data-nav="invoices"><div class="label">Rechnungen</div><div class="value mono">${invs.length}</div></div>
     <div class="kpi-card kpi-clickable" data-nav="invoices" data-invoice-status-filter="offen"><div class="label">Offene Forderungen</div><div class="value mono">${fmtCurrency(openAmount)}</div>${overdueInvs.length ? `<div class="delta" style="color:var(--rust);font-weight:600;">${overdueInvs.length} überfällig · ${fmtCurrency(overdueAmount)}</div>` : ""}</div>
-    <div class="kpi-card"><div class="label">Ø Rechnungswert</div><div class="value mono">${fmtCurrency(avgInvoice)}</div></div>
+    <div class="kpi-card kpi-clickable" data-nav="orders" data-order-status-filter="in_bearbeitung"><div class="label">Aufträge in Bearbeitung</div><div class="value mono">${inProgressCount}</div></div>
+  </div>
+
+  <div class="card">
+    <h2>Aktuelle Aufträge</h2>
+    <table>
+      <thead><tr><th>Nr.</th><th>Kunde</th><th>Datum</th><th class="num">Betrag (geschätzt)</th><th>Status</th></tr></thead>
+      <tbody>
+        ${activeOrders.length ? activeOrders.map(o => `
+          <tr class="clickable" data-goto-order="${o.id}">
+            <td class="mono"><b>${esc(o.number)}</b></td>
+            <td>${esc(customerName(customerById(o.customerId)))}</td>
+            <td>${fmtDate(o.date)}</td>
+            <td class="num">${fmtCurrency(orderTotal(o))}</td>
+            <td>${orderStatusBadge(o.status)}</td>
+          </tr>`).join("") : `<tr class="empty-row"><td colspan="5">Aktuell keine offenen oder laufenden Aufträge</td></tr>`}
+      </tbody>
+    </table>
   </div>
 
   <div class="dash-charts">
@@ -2387,6 +2409,10 @@ function attachGlobalHandlers() {
       if (tab === "invoices") {
         VIEW.invStatusFilter = el.dataset.invoiceStatusFilter || "";
         VIEW.invSearch = "";
+      }
+      if (tab === "orders") {
+        VIEW.orderStatusFilter = el.dataset.orderStatusFilter || "";
+        VIEW.orderSearch = "";
       }
       go(tab, navId);
     });
