@@ -1419,7 +1419,7 @@ function renderProducts() {
           const cost = Number(p.costPrice) || 0;
           const margin = (Number(p.price) || 0) - cost;
           return `
-          <tr>
+          <tr class="clickable" data-edit-product-row="${p.id}">
             <td><b>${esc(p.name)}</b>${p.material ? `<br><span style="color:var(--ink-faint);font-size:11.5px">${esc(p.material)}</span>` : ""}</td>
             <td data-label="Einheit">${esc(p.unit||"")}</td>
             <td class="num mono" data-label="Preis">${fmtCurrency(p.price)}</td>
@@ -2452,11 +2452,14 @@ function attachGlobalHandlers() {
   document.querySelectorAll("[data-edit-customer]").forEach(el => {
     el.addEventListener("click", (e) => { e.stopPropagation(); openCustomerModal(el.dataset.editCustomer); });
   });
+  document.querySelectorAll("[data-edit-product-row]").forEach(el => {
+    el.addEventListener("click", () => openProductModal(el.dataset.editProductRow));
+  });
   document.querySelectorAll("[data-edit-product]").forEach(el => {
-    el.addEventListener("click", () => openProductModal(el.dataset.editProduct));
+    el.addEventListener("click", (e) => { e.stopPropagation(); openProductModal(el.dataset.editProduct); });
   });
   document.querySelectorAll("[data-delete-product]").forEach(el => {
-    el.addEventListener("click", () => deleteProduct(el.dataset.deleteProduct));
+    el.addEventListener("click", (e) => { e.stopPropagation(); deleteProduct(el.dataset.deleteProduct); });
   });
   document.querySelectorAll("[data-delete-invoice]").forEach(el => {
     el.addEventListener("click", () => openDeleteInvoiceModal(el.dataset.deleteInvoice));
