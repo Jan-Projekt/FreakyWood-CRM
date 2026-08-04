@@ -1412,22 +1412,25 @@ function renderProducts() {
   </div>
   <div class="card" style="padding:0;">
     <table>
-      <thead><tr><th>Artikel</th><th>Einheit</th><th class="num">Standardpreis</th><th class="num">Verkauft (Stk.)</th><th></th></tr></thead>
+      <thead><tr><th>Artikel</th><th>Einheit</th><th class="num">Standardpreis</th><th class="num">Marge</th><th class="num">Verkauft (Stk.)</th><th></th></tr></thead>
       <tbody>
         ${list.length ? list.map(p => {
           const sold = DB.invoices.reduce((s,i)=> s + i.items.filter(it=>it.description===p.name).reduce((s2,it)=>s2+(Number(it.qty)||0),0), 0);
+          const cost = Number(p.costPrice) || 0;
+          const margin = (Number(p.price) || 0) - cost;
           return `
           <tr>
-            <td><b>${esc(p.name)}</b></td>
+            <td><b>${esc(p.name)}</b>${p.material ? `<br><span style="color:var(--ink-faint);font-size:11.5px">${esc(p.material)}</span>` : ""}</td>
             <td data-label="Einheit">${esc(p.unit||"")}</td>
             <td class="num mono" data-label="Preis">${fmtCurrency(p.price)}</td>
+            <td class="num mono" data-label="Marge">${cost ? fmtCurrency(margin) : "—"}</td>
             <td class="num" data-label="Verkauft">${sold} Stk.</td>
             <td style="text-align:right">
               <button class="btn btn-sm btn-ghost" data-edit-product="${p.id}">${iconEdit()}</button>
               ${isAdmin() ? `<button class="btn btn-sm btn-ghost" data-delete-product="${p.id}">${iconTrash()}</button>` : ""}
             </td>
           </tr>`;
-        }).join("") : `<tr class="empty-row"><td colspan="5">Keine Artikel gefunden</td></tr>`}
+        }).join("") : `<tr class="empty-row"><td colspan="6">Keine Artikel gefunden</td></tr>`}
       </tbody>
     </table>
   </div>
@@ -2305,6 +2308,19 @@ function openProductModal(id) {
         <div class="field"><label>Einheit</label><input type="text" id="m_unit" value="${p?esc(p.unit):"Stück"}"></div>
         <div class="field"><label>Standardpreis (€)</label><input type="number" step="0.01" min="0" id="m_price" value="${p?p.price:0}"></div>
       </div>
+
+      <h3 style="margin:18px 0 4px;">Produktion</h3>
+      <div class="form-grid">
+        <div class="field"><label>Material</label><input type="text" id="m_material" placeholder="z.B. Birke-Sperrholz 4mm" value="${p?esc(p.material||""):""}"></div>
+        <div class="field"><label>Maschine / Gerät</label><input type="text" id="m_machine" placeholder="z.B. Lasercutter" value="${p?esc(p.machine||""):""}"></div>
+      </div>
+      <div class="field"><label>Bearbeitungseinstellungen</label><input type="text" id="m_settings" placeholder="z.B. Leistung 80%, Geschwindigkeit 15mm/s, 2 Durchgänge" value="${p?esc(p.settings||""):""}"></div>
+      <div class="form-grid">
+        <div class="field"><label>Produktionszeit pro Stück (Min.)</label><input type="number" step="1" min="0" id="m_prodtime" value="${p?(p.prodTimeMinutes||0):0}"></div>
+        <div class="field"><label>Materialkosten pro Stück (€)</label><input type="number" step="0.01" min="0" id="m_costprice" value="${p?(p.costPrice||0):0}"></div>
+      </div>
+      <div class="field"><label>Produktionsnotiz</label><textarea id="m_prodnote" placeholder="Vorlage, Lieferant, Besonderheiten…">${p?esc(p.prodNote||""):""}</textarea></div>
+
       <div class="modal-actions">
         <button type="button" class="btn" id="btnCancelModal">Abbrechen</button>
         <button type="submit" class="btn btn-primary">Speichern</button>
@@ -2320,6 +2336,12 @@ function openProductModal(id) {
       name: document.getElementById("m_pname").value.trim(),
       unit: document.getElementById("m_unit").value.trim(),
       price: Number(document.getElementById("m_price").value) || 0,
+      material: document.getElementById("m_material").value.trim(),
+      machine: document.getElementById("m_machine").value.trim(),
+      settings: document.getElementById("m_settings").value.trim(),
+      prodTimeMinutes: Number(document.getElementById("m_prodtime").value) || 0,
+      costPrice: Number(document.getElementById("m_costprice").value) || 0,
+      prodNote: document.getElementById("m_prodnote").value.trim(),
     };
     if (!data.name) return;
     const idx = DB.products.findIndex(x => x.id === data.id);
