@@ -314,6 +314,9 @@ input:focus, select:focus, textarea:focus{outline:none;border-color:var(--ink);b
 .items-table .desc-col{width:42%;}
 .items-table .num-col{width:12%;}
 .items-total-row td{border-top:2px solid var(--ink);font-weight:700;font-family:var(--font-mono);}
+.items-table .col-delivered{display:none;}
+.items-table.mode-lieferschein .col-price{display:none;}
+.items-table.mode-lieferschein .col-delivered{display:table-cell;}
 
 /* Search bar */
 .toolbar{display:flex;gap:10px;margin-bottom:16px;flex-wrap:wrap;align-items:center;}
@@ -404,6 +407,33 @@ input:focus, select:focus, textarea:focus{outline:none;border-color:var(--ink);b
 .invoice-items tr.total-row td{border-top:2px solid #141414;border-bottom:none;font-weight:700;font-size:14px;}
 .invoice-vat-note{text-align:right;font-size:11px;color:#8A8A8A;margin-top:4px;font-style:italic;}
 .invoice-footnote{margin-top:26px;font-size:12.5px;color:#1A1A1A;line-height:1.6;}
+
+/* Lieferschein layout */
+.ls-title{font-size:22px;font-weight:700;text-align:center;margin:6px 0 14px;}
+.ls-companyline{font-size:11px;color:#4A4A4A;text-align:center;}
+.ls-hr{border:none;border-top:1px solid #141414;margin:10px 0 18px;}
+.ls-header-row{display:flex;gap:20px;align-items:stretch;margin-bottom:18px;}
+.ls-addr-box{
+  display:flex;border:1px solid #141414;flex:1;min-height:80px;
+}
+.ls-vert-label{
+  writing-mode:vertical-rl;transform:rotate(180deg);
+  font-size:10px;font-weight:600;letter-spacing:.04em;
+  padding:8px 5px;border-right:1px solid #141414;
+  display:flex;align-items:center;justify-content:center;
+  white-space:nowrap;
+}
+.ls-addr-content{padding:10px 14px;font-size:13px;line-height:1.5;}
+.ls-meta-box{font-size:12px;line-height:1.9;white-space:nowrap;}
+.ls-meta-box b{display:inline-block;min-width:66px;}
+.ls-kunde{font-size:13px;line-height:1.6;margin-bottom:16px;}
+.ls-fields{font-size:12.5px;line-height:1.7;margin-bottom:20px;}
+.ls-items{margin-top:0;}
+.ls-packstuecke{font-weight:700;font-size:12.5px;margin-top:14px;}
+.ls-note{
+  margin-top:26px;border:1px solid #141414;padding:12px 16px;
+  font-size:11.5px;font-weight:700;text-align:center;line-height:1.5;
+}
 
 @page{
   size: A4;
@@ -614,6 +644,8 @@ input:focus, select:focus, textarea:focus{outline:none;border-color:var(--ink);b
   .items-table{min-width:520px;}
 
   .invoice-body{overflow-x:auto;}
+  .ls-header-row{flex-direction:column;}
+  .ls-meta-box{white-space:normal;}
   .invoice-items{font-size:11.5px;min-width:520px;}
 
   .btn{min-height:40px;}
@@ -839,7 +871,7 @@ function nextQuoteNumber(dateISO) {
 /* ---------------- Navigation ---------------- */
 
 function go(tab, id) {
-  VIEW = { tab, id: id || null };
+  VIEW = { ...VIEW, tab, id: id || null };
   render();
   window.scrollTo(0, 0);
 }
@@ -1712,6 +1744,72 @@ function renderQuoteDetail(id) {
   `;
 }
 
+function renderLieferscheinBody(inv, c, comp) {
+  const addrLines = c ? `${esc(c.name)}${c.company?"<br>"+esc(c.company):""}<br>${esc(c.street)}<br>${esc(c.zip)} ${esc(c.city)}` : "Unbekannter Kunde";
+  return `
+  <div class="invoice-body ls-body">
+    <div class="ls-title">Lieferschein</div>
+    <div class="ls-companyline">${esc(comp.name)} • ${esc(comp.street)} • ${esc(comp.zip)}-${esc(comp.city)}</div>
+    <hr class="ls-hr">
+
+    <div class="ls-header-row">
+      <div class="ls-addr-box">
+        <div class="ls-vert-label">Lieferanschrift</div>
+        <div class="ls-addr-content">${addrLines}</div>
+      </div>
+      <div class="ls-meta-box">
+        <div><b>Datum.</b> : ${fmtDate(inv.date)}</div>
+        <div><b>Beleg-Nr.</b> : ${esc(inv.number)}</div>
+        <div><b>Bearbeiter</b> : ${esc(inv.bearbeiter || "—")}</div>
+        <div><b>Telefon</b> : ${esc(comp.phone)}</div>
+      </div>
+    </div>
+
+    <div class="ls-kunde">
+      <b>Kunde:</b><br>
+      ${addrLines}
+    </div>
+
+    <div class="ls-fields">
+      <div>Angebots-Nr. &nbsp;&nbsp;: ${esc(inv.angebotsNr || "/")}</div>
+      <div>Lieferbedingung &nbsp;&nbsp;: ${esc(inv.deliveryTerm || "—")}</div>
+      <div>Lieferung &nbsp;&nbsp;: ${esc(inv.lieferungArt || "—")}</div>
+      <div>Versandart &nbsp;&nbsp;: ${esc(inv.versandart || "—")}</div>
+    </div>
+
+    <table class="invoice-items ls-items">
+      <thead><tr>
+        <th style="width:6%">POS.</th>
+        <th>Beschreibung</th>
+        <th class="num" style="width:16%">Auftragsmenge</th>
+        <th class="num" style="width:14%">Liefermenge</th>
+        <th class="num" style="width:14%">Restmenge</th>
+      </tr></thead>
+      <tbody>
+        ${inv.items.map((it, idx) => {
+          const ordered = Number(it.qty) || 0;
+          const delivered = it.deliveredQty !== undefined ? Number(it.deliveredQty) || 0 : ordered;
+          const rest = Math.max(0, ordered - delivered);
+          return `
+          <tr>
+            <td>${idx+1}</td>
+            <td>${esc(it.description)}</td>
+            <td class="num">${ordered}</td>
+            <td class="num">${delivered}</td>
+            <td class="num">${rest} ST</td>
+          </tr>`;
+        }).join("")}
+      </tbody>
+    </table>
+
+    <div class="ls-packstuecke">Anzahl Packstücke: ${inv.packstuecke || 1}</div>
+
+    <div class="invoice-footnote">Wenn Du Fragen zu diesem Lieferschein haben solltest, wende Dich bitte an folgende E-Mail-Adresse : ${esc(comp.email)}</div>
+
+    <div class="ls-note">**Bitte beachte, dass nur saubere, intakte und verkaufsfertige Ware zurück genommen werden kann. Angefertigte Produkte sind von der Rücknahme ausgeschlossen.</div>
+  </div>`;
+}
+
 function paymentFootnote(inv) {
   const c = DB.settings.company;
   if (inv.paymentMethod === "bar") {
@@ -1752,18 +1850,19 @@ function renderInvoiceDetail(id) {
   </div>
 
   <div class="invoice-sheet" id="invoiceSheet" style="background-image:url('${LETTERHEAD_BG}');">
+    ${isLieferschein ? renderLieferscheinBody(inv, c, comp) : `
     <div class="invoice-body">
       <div class="invoice-meta">
-        <h1>${docLabel} Nr. ${esc(inv.number)}</h1>
-        <div class="date">${isLieferschein?"Lieferdatum":"Rechnungsdatum"}: ${fmtDate(inv.date)}</div>
-        ${(inv.dueDate && !isLieferschein) ? `<div class="date">Zahlungsziel: ${fmtDate(inv.dueDate)}</div>` : ""}
+        <h1>Rechnung Nr. ${esc(inv.number)}</h1>
+        <div class="date">Rechnungsdatum: ${fmtDate(inv.date)}</div>
+        ${inv.dueDate ? `<div class="date">Zahlungsziel: ${fmtDate(inv.dueDate)}</div>` : ""}
       </div>
       <div class="invoice-sender">
         ${esc(comp.name)}<br>${esc(comp.street)}<br>${esc(comp.zip)} ${esc(comp.city)}
       </div>
 
       <div class="invoice-addr-block">
-        <div class="label">${isLieferschein?"Lieferadresse":"Rechnungsadresse"}</div>
+        <div class="label">Rechnungsadresse</div>
         <div class="addr">
           <b>${esc(c ? c.name : "Unbekannter Kunde")}</b><br>
           ${c && c.company ? esc(c.company)+"<br>" : ""}
@@ -1777,20 +1876,6 @@ function renderInvoiceDetail(id) {
         ${inv.deliveryRef ? esc(inv.deliveryRef) : ""}
       </div>` : ""}
 
-      ${isLieferschein ? `
-      <table class="invoice-items">
-        <thead><tr><th style="width:8%">POS</th><th>Beschreibung</th><th class="num" style="width:18%">Anzahl</th></tr></thead>
-        <tbody>
-          ${inv.items.map((it, idx) => `
-            <tr>
-              <td>${idx+1}</td>
-              <td>${esc(it.description)}</td>
-              <td class="num">${it.qty}</td>
-            </tr>`).join("")}
-        </tbody>
-      </table>
-      <div class="invoice-footnote">Ware wie oben beschrieben geliefert am ${fmtDate(inv.date)}.</div>
-      ` : `
       <table class="invoice-items">
         <thead><tr><th style="width:6%">POS</th><th>Beschreibung</th><th class="num" style="width:14%">Anzahl</th><th class="num" style="width:14%">Preis</th><th class="num" style="width:16%">Summe</th></tr></thead>
         <tbody>
@@ -1807,8 +1892,8 @@ function renderInvoiceDetail(id) {
       </table>
       ${comp.kleinunternehmer ? `<div class="invoice-vat-note">MwSt. wird nicht ausgewiesen (Kleinunternehmer, §19 UStG)</div>` : ""}
       <div class="invoice-footnote">${paymentFootnote(inv)}</div>
-      `}
     </div>
+    `}
   </div>
   `;
 }
@@ -1902,17 +1987,50 @@ function renderInvoiceForm(editId) {
       </div>
     </div>
 
+    <div class="card" id="lieferscheinFields" style="display:${docType==="lieferschein"?"":"none"};">
+      <h2>Lieferschein-Details</h2>
+      <div class="form-grid">
+        <div class="field">
+          <label>Bearbeiter</label>
+          <input type="text" id="f_bearbeiter" value="${esc(editing?(editing.bearbeiter||""):(CURRENT_USER?CURRENT_USER.name:""))}">
+        </div>
+        <div class="field">
+          <label>Angebots-Nr.</label>
+          <input type="text" id="f_angebotsnr" placeholder="/" value="${esc(editing?(editing.angebotsNr||""):"")}">
+        </div>
+        <div class="field">
+          <label>Lieferung</label>
+          <input type="text" id="f_lieferungart" placeholder="z.B. Standardlieferung" value="${esc(editing?(editing.lieferungArt||""):"Standardlieferung")}">
+        </div>
+        <div class="field">
+          <label>Versandart</label>
+          <input type="text" id="f_versandart" placeholder="z.B. Post" value="${esc(editing?(editing.versandart||""):"Post")}">
+        </div>
+        <div class="field">
+          <label>Anzahl Packstücke</label>
+          <input type="number" min="0" step="1" id="f_packstuecke" value="${editing?(editing.packstuecke||1):1}">
+        </div>
+      </div>
+    </div>
+
     <div class="card">
       <h2>Positionen</h2>
       <datalist id="productSuggestions">${productDatalist}</datalist>
       <div class="items-table-wrap">
-      <table class="items-table">
-        <thead><tr><th class="desc-col">Beschreibung</th><th class="num-col">Anzahl</th><th class="num-col">Preis (€)</th><th class="num-col">Summe</th><th></th></tr></thead>
+      <table class="items-table mode-${docType}" id="itemsTable">
+        <thead><tr>
+          <th class="desc-col">Beschreibung</th>
+          <th class="num-col">${docType==="lieferschein"?"Auftragsmenge":"Anzahl"}</th>
+          <th class="num-col col-price">Preis (€)</th>
+          <th class="num-col col-delivered">Liefermenge</th>
+          <th class="num-col col-price">Summe</th>
+          <th></th>
+        </tr></thead>
         <tbody id="itemsBody">
           ${items.map((it, idx) => itemRow(it, idx)).join("")}
         </tbody>
         <tfoot>
-          <tr class="items-total-row"><td colspan="3" style="text-align:right">Endsumme</td><td class="num" id="formTotal">${fmtCurrency(items.reduce((s,it)=>s+(Number(it.qty)||0)*(Number(it.price)||0),0))}</td><td></td></tr>
+          <tr class="items-total-row" id="formTotalRow" style="display:${docType==="lieferschein"?"none":""};"><td colspan="4" style="text-align:right">Endsumme</td><td class="num" id="formTotal">${fmtCurrency(items.reduce((s,it)=>s+(Number(it.qty)||0)*(Number(it.price)||0),0))}</td><td></td></tr>
         </tfoot>
       </table>
       </div>
@@ -2089,12 +2207,14 @@ function renderQuoteForm(editId) {
 
 function itemRow(it, idx) {
   const sum = (Number(it.qty)||0) * (Number(it.price)||0);
+  const delivered = it.deliveredQty !== undefined ? it.deliveredQty : it.qty;
   return `
   <tr data-item-row="${idx}">
     <td><input type="text" class="item-desc" list="productSuggestions" value="${esc(it.description)}" placeholder="Artikelbezeichnung" required></td>
     <td><input type="number" class="item-qty" min="0" step="1" value="${it.qty}"></td>
-    <td><input type="number" class="item-price" min="0" step="0.01" value="${it.price}"></td>
-    <td class="num mono item-sum">${fmtCurrency(sum)}</td>
+    <td class="col-price"><input type="number" class="item-price" min="0" step="0.01" value="${it.price}"></td>
+    <td class="col-delivered"><input type="number" class="item-delivered" min="0" step="1" value="${delivered}"></td>
+    <td class="num mono item-sum col-price">${fmtCurrency(sum)}</td>
     <td><button type="button" class="btn btn-sm btn-ghost item-remove">${iconTrash()}</button></td>
   </tr>`;
 }
@@ -2111,6 +2231,19 @@ function recalcItemsTotal() {
   });
   const totalEl = document.getElementById("formTotal");
   if (totalEl) totalEl.textContent = fmtCurrency(total);
+}
+
+function applyDocTypeToForm(docType) {
+  const table = document.getElementById("itemsTable");
+  const lsFields = document.getElementById("lieferscheinFields");
+  const totalRow = document.getElementById("formTotalRow");
+  if (table) table.classList.toggle("mode-lieferschein", docType === "lieferschein");
+  if (lsFields) lsFields.style.display = docType === "lieferschein" ? "" : "none";
+  if (totalRow) totalRow.style.display = docType === "lieferschein" ? "none" : "";
+  const dueDateField = document.getElementById("f_dueDate");
+  const paymentMethodField = document.getElementById("f_paymentMethod");
+  if (dueDateField) dueDateField.closest(".field").style.display = docType === "lieferschein" ? "none" : "";
+  if (paymentMethodField) paymentMethodField.closest(".field").style.display = docType === "lieferschein" ? "none" : "";
 }
 
 /* ============================================================
@@ -2484,8 +2617,10 @@ function attachGlobalHandlers() {
       const navId = el.dataset.navId || null;
       if (tab === "invoice-new" && el.dataset.prefillCustomer) {
         VIEW.prefillCustomer = el.dataset.prefillCustomer;
+        VIEW.prefillOrder = null;
       } else if (tab !== VIEW.tab) {
         VIEW.prefillCustomer = null;
+        if (!(tab === "invoice-new" && el.dataset.convertOrder)) VIEW.prefillOrder = null;
       }
       if (tab === "invoices") {
         VIEW.invStatusFilter = el.dataset.invoiceStatusFilter || "";
@@ -2528,6 +2663,7 @@ function attachGlobalHandlers() {
   });
   document.querySelectorAll("[data-convert-order]").forEach(el => {
     el.addEventListener("click", () => {
+      VIEW.prefillCustomer = null;
       VIEW.prefillOrder = el.dataset.convertOrder;
       go("invoice-new");
     });
@@ -2733,6 +2869,14 @@ function wireInvoiceForm() {
     });
   }
 
+  const docTypeField = document.getElementById("f_doctype");
+  if (docTypeField) {
+    docTypeField.addEventListener("change", () => {
+      applyDocTypeToForm(docTypeField.value);
+      recalcItemsTotal();
+    });
+  }
+
   form.addEventListener("submit", async (e) => {
     e.preventDefault();
     const editId = document.getElementById("f_editId").value;
@@ -2744,6 +2888,7 @@ function wireInvoiceForm() {
       description: r.querySelector(".item-desc").value.trim(),
       qty: Number(r.querySelector(".item-qty").value) || 0,
       price: Number(r.querySelector(".item-price").value) || 0,
+      deliveredQty: Number(r.querySelector(".item-delivered").value) || 0,
     })).filter(it => it.description);
 
     if (!items.length) { showToast("Bitte mindestens eine Position angeben"); return; }
@@ -2762,6 +2907,11 @@ function wireInvoiceForm() {
       paymentMethod: document.getElementById("f_paymentMethod").value,
       status: document.getElementById("f_status").value,
       items,
+      bearbeiter: document.getElementById("f_bearbeiter") ? document.getElementById("f_bearbeiter").value.trim() : "",
+      angebotsNr: document.getElementById("f_angebotsnr") ? document.getElementById("f_angebotsnr").value.trim() : "",
+      lieferungArt: document.getElementById("f_lieferungart") ? document.getElementById("f_lieferungart").value.trim() : "",
+      versandart: document.getElementById("f_versandart") ? document.getElementById("f_versandart").value.trim() : "",
+      packstuecke: document.getElementById("f_packstuecke") ? (Number(document.getElementById("f_packstuecke").value) || 0) : 0,
     };
 
     if (editId) {
