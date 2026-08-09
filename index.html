@@ -395,7 +395,7 @@ input:focus, select:focus, textarea:focus{outline:none;border-color:var(--ink);b
 .invoice-addr-block .label{font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:#8A8A8A;margin-bottom:4px;}
 .invoice-addr-block .addr{font-size:13.5px;line-height:1.5;}
 .invoice-terms{margin-top:16px;font-size:12px;color:#4A4A4A;}
-.invoice-items{margin-top:22px;width:100%;border-collapse:collapse;}
+.invoice-items{margin-top:42px;width:100%;border-collapse:collapse;}
 .invoice-items th{
   text-align:left;font-size:10.5px;text-transform:uppercase;letter-spacing:.06em;
   color:#8A8A8A;border-bottom:1.5px solid #141414;padding:0 8px 8px;font-family:var(--font-body);
@@ -698,7 +698,17 @@ function ensureUserDefaults(db) {
     db.invoices.forEach(inv => {
       if (!inv.createdBy) inv.createdBy = "Admin";
       if (!inv.type) inv.type = "rechnung";
+      if (inv.invoiceId === undefined) inv.invoiceId = null;
+      // Lieferscheine nutzten früher denselben Status wie Rechnungen ("bezahlt");
+      // seit Einführung von "versendet"/"erledigt" für Lieferscheine migrieren wir das.
+      if (inv.type === "lieferschein" && inv.status === "bezahlt") inv.status = "erledigt";
+      // Liefer-/Leistungsdatum: für Bestandsrechnungen als sinnvollen Default auf das
+      // Rechnungsdatum setzen, damit beim erneuten Drucken kein leeres Feld erscheint.
+      if (!inv.performanceDate) inv.performanceDate = inv.date;
     });
+  }
+  if (db.settings.company && db.settings.company.steuernummer === undefined) {
+    db.settings.company.steuernummer = "21/234/10203";
   }
   if (Array.isArray(db.customers)) {
     db.customers.forEach(c => {
@@ -711,6 +721,9 @@ function ensureUserDefaults(db) {
   if (!Array.isArray(db.quotes)) db.quotes = [];
   if (db.settings.quoteNextSeq === undefined) db.settings.quoteNextSeq = 1;
   if (db.settings.quoteSeqYear === undefined) db.settings.quoteSeqYear = Number(todayISO().slice(0,4));
+  db.quotes.forEach(q => {
+    if (q.invoiceId === undefined) q.invoiceId = null;
+  });
 }
 
 async function loadData() {
@@ -1397,14 +1410,36 @@ function renderCustomerDetail(id) {
 }
 
 function isOverdue(inv) {
-  return inv.status === "offen" && !!inv.dueDate && inv.dueDate < todayISO();
+  return inv.type !== "lieferschein" && inv.status === "offen" && !!inv.dueDate && inv.dueDate < todayISO();
+}
+
+const RECHNUNG_STATUSES = {
+  offen: { label: "Offen", cls: "offen" },
+  bezahlt: { label: "Bezahlt", cls: "bezahlt" },
+  storniert: { label: "Storniert", cls: "storniert" },
+};
+const LIEFERSCHEIN_STATUSES = {
+  offen: { label: "Offen", cls: "offen" },
+  versendet: { label: "Versendet", cls: "inbearbeitung" },
+  erledigt: { label: "Erledigt", cls: "bezahlt" },
+  storniert: { label: "Storniert", cls: "storniert" },
+};
+function invoiceStatusMap(type) {
+  return type === "lieferschein" ? LIEFERSCHEIN_STATUSES : RECHNUNG_STATUSES;
+}
+function invoiceStatusOptionsHtml(type, currentStatus) {
+  const map = invoiceStatusMap(type);
+  const keys = Object.keys(map);
+  const selectedKey = map[currentStatus] ? currentStatus : keys[0];
+  return keys.map(k => `<option value="${k}" ${k===selectedKey?"selected":""}>${esc(map[k].label)}</option>`).join("");
 }
 function statusStamp(inv) {
   if (isOverdue(inv)) {
     return `<span class="stamp ueberfaellig">Überfällig</span>`;
   }
-  const map = { offen: "offen", bezahlt: "bezahlt", storniert: "storniert" };
-  return `<span class="stamp ${inv.status}">${map[inv.status] || inv.status}</span>`;
+  const map = invoiceStatusMap(inv.type);
+  const s = map[inv.status] || { label: inv.status, cls: "offen" };
+  return `<span class="stamp ${s.cls}">${esc(s.label)}</span>`;
 }
 
 const ORDER_STATUSES = {
@@ -1506,6 +1541,8 @@ function renderInvoices() {
       <option value="">Alle Status</option>
       <option value="offen" ${statusFilter==="offen"?"selected":""}>Offen</option>
       <option value="bezahlt" ${statusFilter==="bezahlt"?"selected":""}>Bezahlt</option>
+      <option value="versendet" ${statusFilter==="versendet"?"selected":""}>Versendet</option>
+      <option value="erledigt" ${statusFilter==="erledigt"?"selected":""}>Erledigt</option>
       <option value="storniert" ${statusFilter==="storniert"?"selected":""}>Storniert</option>
     </select>
   </div>
@@ -1689,13 +1726,15 @@ function renderQuoteDetail(id) {
   const c = customerById(quote.customerId);
   const total = quoteTotal(quote);
   const linkedOrder = quote.orderId ? orderById(quote.orderId) : null;
+  const linkedInvoice = quote.invoiceId ? invoiceById(quote.invoiceId) : null;
+  const isConverted = !!(linkedOrder || linkedInvoice);
 
   return `
   <span class="back-link" data-nav="quotes">${iconArrowLeft()} Alle Angebote</span>
   <div class="page-head">
     <div><h1>Angebot ${esc(quote.number)}</h1><div class="sub">${esc(customerName(c))} · ${fmtDate(quote.date)}</div></div>
     <div class="head-actions">
-      <select id="quoteStatusChanger" data-quote-id="${quote.id}" class="btn" style="font-family:inherit;" ${quote.status==='umgewandelt'?'disabled':''}>
+      <select id="quoteStatusChanger" data-quote-id="${quote.id}" class="btn" style="font-family:inherit;" ${isConverted?'disabled':''}>
         <option value="offen" ${quote.status==="offen"?"selected":""}>Offen</option>
         <option value="angenommen" ${quote.status==="angenommen"?"selected":""}>Angenommen</option>
         <option value="abgelehnt" ${quote.status==="abgelehnt"?"selected":""}>Abgelehnt</option>
@@ -1710,10 +1749,17 @@ function renderQuoteDetail(id) {
     <div class="card" style="border-left:3px solid var(--ink);">
       <p style="font-size:13px;margin:0;">Bereits umgewandelt in Auftrag <a href="#" data-goto-order="${linkedOrder.id}" style="font-weight:600;color:var(--ink);">${esc(linkedOrder.number)}</a>.</p>
     </div>
+  ` : linkedInvoice ? `
+    <div class="card" style="border-left:3px solid var(--ink);">
+      <p style="font-size:13px;margin:0;">Bereits abgerechnet als Rechnung <a href="#" data-goto-invoice="${linkedInvoice.id}" style="font-weight:600;color:var(--ink);">${esc(linkedInvoice.number)}</a>.</p>
+    </div>
   ` : `
     <div class="card" style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;">
-      <p style="font-size:13px;color:var(--ink-soft);margin:0;">Wenn der Kunde zugesagt hat, kannst du daraus direkt einen Auftrag erstellen.</p>
-      <button class="btn btn-primary" data-convert-quote="${quote.id}">${iconClipboard()} Auftrag erstellen</button>
+      <p style="font-size:13px;color:var(--ink-soft);margin:0;">Wenn der Kunde zugesagt hat, kannst du daraus direkt einen Auftrag oder eine Rechnung erstellen.</p>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;">
+        <button class="btn" data-convert-quote="${quote.id}">${iconClipboard()} Auftrag erstellen</button>
+        <button class="btn btn-primary" data-convert-quote-invoice="${quote.id}">${iconDoc()} Rechnung erstellen</button>
+      </div>
     </div>
   `}
 
@@ -1831,6 +1877,7 @@ function renderInvoiceDetail(id) {
   const total = invoiceTotal(inv);
   const isLieferschein = inv.type === "lieferschein";
   const docLabel = isLieferschein ? "Lieferschein" : "Rechnung";
+  const linkedInvoice = isLieferschein && inv.invoiceId ? invoiceById(inv.invoiceId) : null;
 
   return `
   <span class="back-link no-print" data-nav="invoices">${iconArrowLeft()} Alle Rechnungen</span>
@@ -1838,9 +1885,7 @@ function renderInvoiceDetail(id) {
     <div><h1>${docLabel} ${esc(inv.number)}</h1><div class="sub">${esc(customerName(c))} · ${fmtDate(inv.date)} · erstellt von ${esc(inv.createdBy || "—")}</div></div>
     <div class="head-actions">
       <select id="statusChanger" data-invoice-id="${inv.id}" class="btn" style="font-family:inherit;">
-        <option value="offen" ${inv.status==="offen"?"selected":""}>Offen</option>
-        <option value="bezahlt" ${inv.status==="bezahlt"?"selected":""}>Bezahlt</option>
-        <option value="storniert" ${inv.status==="storniert"?"selected":""}>Storniert</option>
+        ${invoiceStatusOptionsHtml(inv.type, inv.status)}
       </select>
       <button class="btn" data-nav="invoice-edit" data-nav-id="${inv.id}">${iconEdit()} Bearbeiten</button>
       <button class="btn" id="btnPrintInvoice">${iconPrint()} Drucken / PDF</button>
@@ -1848,12 +1893,24 @@ function renderInvoiceDetail(id) {
     </div>
   </div>
 
+  ${isLieferschein ? (linkedInvoice ? `
+    <div class="card no-print" style="border-left:3px solid var(--ink);">
+      <p style="font-size:13px;margin:0;">Bereits abgerechnet als Rechnung <a href="#" data-goto-invoice="${linkedInvoice.id}" style="font-weight:600;color:var(--ink);">${esc(linkedInvoice.number)}</a>.</p>
+    </div>
+  ` : `
+    <div class="card no-print" style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;">
+      <p style="font-size:13px;color:var(--ink-soft);margin:0;">Wenn der Lieferschein abgerechnet werden soll, kannst du daraus direkt eine Rechnung erstellen.</p>
+      <button class="btn btn-primary" data-convert-lieferschein="${inv.id}">${iconDoc()} Rechnung erstellen</button>
+    </div>
+  `) : ""}
+
   <div class="invoice-sheet" id="invoiceSheet" style="background-image:url('${LETTERHEAD_BG}');">
     ${isLieferschein ? renderLieferscheinBody(inv, c, comp) : `
     <div class="invoice-body">
       <div class="invoice-meta">
         <h1>Rechnung Nr. ${esc(inv.number)}</h1>
         <div class="date">Rechnungsdatum: ${fmtDate(inv.date)}</div>
+        <div class="date">Liefer-/Leistungsdatum: ${fmtDate(inv.performanceDate || inv.date)}</div>
         ${inv.dueDate ? `<div class="date">Zahlungsziel: ${fmtDate(inv.dueDate)}</div>` : ""}
       </div>
       <div class="invoice-sender">
@@ -1889,7 +1946,7 @@ function renderInvoiceDetail(id) {
           <tr class="total-row"><td colspan="4" style="text-align:right">Endsumme</td><td class="num">${fmtCurrency(total)}</td></tr>
         </tbody>
       </table>
-      ${comp.kleinunternehmer ? `<div class="invoice-vat-note">MwSt. wird nicht ausgewiesen (Kleinunternehmer, §19 UStG)</div>` : ""}
+      ${comp.kleinunternehmer ? `<div class="invoice-vat-note">MwSt. wird nicht ausgewiesen (Kleinunternehmer, §19 UStG)${comp.steuernummer ? ` — Steuernummer ${esc(comp.steuernummer)}` : ""}</div>` : ""}
       <div class="invoice-footnote">${paymentFootnote(inv)}</div>
     </div>
     `}
@@ -1905,13 +1962,23 @@ function renderInvoiceForm(editId) {
   const editing = editId ? invoiceById(editId) : null;
   const isEdit = !!editing;
   const prefillOrder = (!isEdit && VIEW.prefillOrder) ? orderById(VIEW.prefillOrder) : null;
-  const prefillCustomer = VIEW.prefillCustomer || (prefillOrder ? prefillOrder.customerId : (editing ? editing.customerId : ""));
+  const prefillQuoteSrc = (!isEdit && VIEW.prefillQuoteToInvoice) ? quoteById(VIEW.prefillQuoteToInvoice) : null;
+  const prefillLieferschein = (!isEdit && VIEW.prefillLieferschein) ? invoiceById(VIEW.prefillLieferschein) : null;
+  const prefillSrc = prefillOrder || prefillQuoteSrc || prefillLieferschein;
+  const prefillCustomer = VIEW.prefillCustomer || (prefillSrc ? prefillSrc.customerId : (editing ? editing.customerId : ""));
 
   const date = editing ? editing.date : todayISO();
   const numberInfo = editing ? { number: editing.number } : nextInvoiceNumber(date);
   const dueDate = editing ? editing.dueDate : addDaysISO(date, DB.settings.company.defaultPaymentDays || 14);
-  const items = editing ? editing.items : (prefillOrder ? prefillOrder.items.map(it => ({...it})) : [{ description: "", qty: 1, price: 0 }]);
-  const prefillDeliveryRef = prefillOrder ? `Gemäß Auftrag ${prefillOrder.number}` : "";
+  const performanceDate = editing ? (editing.performanceDate || editing.date) : date;
+  const items = editing ? editing.items
+    : prefillLieferschein ? prefillLieferschein.items.map(it => ({ description: it.description, qty: (it.deliveredQty !== undefined && it.deliveredQty !== null ? it.deliveredQty : it.qty), price: it.price }))
+    : prefillSrc ? prefillSrc.items.map(it => ({...it}))
+    : [{ description: "", qty: 1, price: 0 }];
+  const prefillDeliveryRef = prefillOrder ? `Gemäß Auftrag ${prefillOrder.number}`
+    : prefillQuoteSrc ? `Gemäß Angebot ${prefillQuoteSrc.number}`
+    : prefillLieferschein ? `Gemäß Lieferschein ${prefillLieferschein.number}`
+    : "";
 
   const customerOptions = DB.customers.slice().sort((a,b)=>a.name.localeCompare(b.name,"de"))
     .map(c => `<option value="${c.id}" ${(prefillCustomer===c.id)?"selected":""}>${esc(customerName(c))}</option>`).join("");
@@ -1960,8 +2027,12 @@ function renderInvoiceForm(editId) {
           <input type="date" id="f_dueDate" value="${dueDate || ""}">
         </div>
         <div class="field">
+          <label>Liefer-/Leistungsdatum</label>
+          <input type="date" id="f_performanceDate" value="${performanceDate || ""}">
+        </div>
+        <div class="field">
           <label>Lieferbedingung</label>
-          <input type="text" id="f_deliveryTerm" placeholder="z.B. frei Haus" value="${esc(editing?editing.deliveryTerm:"")}">
+          <input type="text" id="f_deliveryTerm" placeholder="z.B. frei Haus" value="${esc(editing ? (editing.deliveryTerm||"") : (prefillLieferschein ? (prefillLieferschein.deliveryTerm||"") : ""))}">
         </div>
         <div class="field">
           <label>Bezug (Lieferschein / Angebot)</label>
@@ -1978,9 +2049,7 @@ function renderInvoiceForm(editId) {
         <div class="field">
           <label>Status</label>
           <select id="f_status">
-            <option value="offen" ${(!editing||editing.status==="offen")?"selected":""}>Offen</option>
-            <option value="bezahlt" ${editing&&editing.status==="bezahlt"?"selected":""}>Bezahlt</option>
-            <option value="storniert" ${editing&&editing.status==="storniert"?"selected":""}>Storniert</option>
+            ${invoiceStatusOptionsHtml(docType, editing ? editing.status : "offen")}
           </select>
         </div>
       </div>
@@ -2095,7 +2164,7 @@ function renderOrderForm(editId) {
       </div>
       <div class="field">
         <label>Notiz</label>
-        <textarea id="o_note" placeholder="z.B. Absprachen, Liefertermin, Besonderheiten">${editing?esc(editing.note||""):""}</textarea>
+        <textarea id="o_note" placeholder="z.B. Absprachen, Liefertermin, Besonderheiten">${editing ? esc(editing.note||"") : (prefillQuote ? esc(prefillQuote.note||"") : "")}</textarea>
       </div>
     </div>
 
@@ -2241,8 +2310,15 @@ function applyDocTypeToForm(docType) {
   if (totalRow) totalRow.style.display = docType === "lieferschein" ? "none" : "";
   const dueDateField = document.getElementById("f_dueDate");
   const paymentMethodField = document.getElementById("f_paymentMethod");
+  const performanceDateField = document.getElementById("f_performanceDate");
   if (dueDateField) dueDateField.closest(".field").style.display = docType === "lieferschein" ? "none" : "";
   if (paymentMethodField) paymentMethodField.closest(".field").style.display = docType === "lieferschein" ? "none" : "";
+  if (performanceDateField) performanceDateField.closest(".field").style.display = docType === "lieferschein" ? "none" : "";
+  const statusField = document.getElementById("f_status");
+  if (statusField) {
+    const currentValue = statusField.value;
+    statusField.innerHTML = invoiceStatusOptionsHtml(docType, currentValue);
+  }
 }
 
 /* ============================================================
@@ -2277,6 +2353,7 @@ function renderSettings() {
         <div class="field"><label>Bank</label><input type="text" id="s_bankName" value="${esc(comp.bankName)}"></div>
         <div class="field"><label>IBAN</label><input type="text" id="s_iban" value="${esc(comp.iban)}"></div>
         <div class="field"><label>BIC</label><input type="text" id="s_bic" value="${esc(comp.bic)}"></div>
+        <div class="field"><label>Steuernummer</label><input type="text" id="s_steuernummer" value="${esc(comp.steuernummer||"")}"></div>
         <div class="field"><label>Standard-Zahlungsziel (Tage)</label><input type="number" id="s_days" value="${comp.defaultPaymentDays}"></div>
       </div>
       <div class="field checkbox-row">
@@ -2617,9 +2694,13 @@ function attachGlobalHandlers() {
       if (tab === "invoice-new" && el.dataset.prefillCustomer) {
         VIEW.prefillCustomer = el.dataset.prefillCustomer;
         VIEW.prefillOrder = null;
+        VIEW.prefillQuoteToInvoice = null;
+        VIEW.prefillLieferschein = null;
       } else if (tab !== VIEW.tab) {
         VIEW.prefillCustomer = null;
         if (!(tab === "invoice-new" && el.dataset.convertOrder)) VIEW.prefillOrder = null;
+        VIEW.prefillQuoteToInvoice = null;
+        VIEW.prefillLieferschein = null;
       }
       if (tab === "invoices") {
         VIEW.invStatusFilter = el.dataset.invoiceStatusFilter || "";
@@ -2664,6 +2745,33 @@ function attachGlobalHandlers() {
     el.addEventListener("click", () => {
       VIEW.prefillCustomer = null;
       VIEW.prefillOrder = el.dataset.convertOrder;
+      VIEW.prefillQuoteToInvoice = null;
+      VIEW.prefillLieferschein = null;
+      go("invoice-new");
+    });
+  });
+  document.querySelectorAll("[data-convert-quote]").forEach(el => {
+    el.addEventListener("click", () => {
+      VIEW.prefillCustomer = null;
+      VIEW.prefillQuote = el.dataset.convertQuote;
+      go("order-new");
+    });
+  });
+  document.querySelectorAll("[data-convert-quote-invoice]").forEach(el => {
+    el.addEventListener("click", () => {
+      VIEW.prefillCustomer = null;
+      VIEW.prefillOrder = null;
+      VIEW.prefillLieferschein = null;
+      VIEW.prefillQuoteToInvoice = el.dataset.convertQuoteInvoice;
+      go("invoice-new");
+    });
+  });
+  document.querySelectorAll("[data-convert-lieferschein]").forEach(el => {
+    el.addEventListener("click", () => {
+      VIEW.prefillCustomer = null;
+      VIEW.prefillOrder = null;
+      VIEW.prefillQuoteToInvoice = null;
+      VIEW.prefillLieferschein = el.dataset.convertLieferschein;
       go("invoice-new");
     });
   });
@@ -2699,6 +2807,11 @@ function attachGlobalHandlers() {
   if (orderStatusChanger) orderStatusChanger.onchange = async (e) => {
     const ord = orderById(e.target.dataset.orderId);
     if (ord && ord.status !== "abgerechnet") { ord.status = e.target.value; await saveData(); render(); }
+  };
+  const quoteStatusChanger = document.getElementById("quoteStatusChanger");
+  if (quoteStatusChanger) quoteStatusChanger.onchange = async (e) => {
+    const q = quoteById(e.target.dataset.quoteId);
+    if (q && q.status !== "umgewandelt") { q.status = e.target.value; await saveData(); render(); }
   };
 
   const btnPrint = document.getElementById("btnPrintInvoice");
@@ -2790,6 +2903,7 @@ function attachGlobalHandlers() {
     comp.bankName = document.getElementById("s_bankName").value.trim();
     comp.iban = document.getElementById("s_iban").value.trim();
     comp.bic = document.getElementById("s_bic").value.trim();
+    comp.steuernummer = document.getElementById("s_steuernummer").value.trim();
     comp.defaultPaymentDays = Number(document.getElementById("s_days").value) || 14;
     comp.kleinunternehmer = document.getElementById("s_klein").checked;
     DB.settings.nextSeq = Number(document.getElementById("s_nextSeq").value) || DB.settings.nextSeq;
@@ -2800,6 +2914,7 @@ function attachGlobalHandlers() {
 
   wireInvoiceForm();
   wireOrderForm();
+  wireQuoteForm();
 }
 
 function renderInPlace(tab) {
@@ -2874,6 +2989,9 @@ function wireInvoiceForm() {
       applyDocTypeToForm(docTypeField.value);
       recalcItemsTotal();
     });
+    // Sichtbarkeit direkt beim Öffnen des Formulars korrekt setzen (wichtig z.B. beim
+    // Bearbeiten eines bestehenden Lieferscheins, wo der Dokumenttyp nicht erst geändert wird).
+    applyDocTypeToForm(docTypeField.value);
   }
 
   form.addEventListener("submit", async (e) => {
@@ -2901,6 +3019,7 @@ function wireInvoiceForm() {
       customerId,
       date,
       dueDate: document.getElementById("f_dueDate").value || "",
+      performanceDate: document.getElementById("f_performanceDate").value || "",
       deliveryTerm: document.getElementById("f_deliveryTerm").value.trim(),
       deliveryRef: document.getElementById("f_deliveryRef").value.trim(),
       paymentMethod: document.getElementById("f_paymentMethod").value,
@@ -2943,6 +3062,16 @@ function wireInvoiceForm() {
         const ord = orderById(VIEW.prefillOrder);
         if (ord) { ord.status = "abgerechnet"; ord.invoiceId = newInv.id; }
         VIEW.prefillOrder = null;
+      }
+      if (VIEW.prefillQuoteToInvoice) {
+        const src = quoteById(VIEW.prefillQuoteToInvoice);
+        if (src) { src.status = "umgewandelt"; src.invoiceId = newInv.id; }
+        VIEW.prefillQuoteToInvoice = null;
+      }
+      if (VIEW.prefillLieferschein) {
+        const src = invoiceById(VIEW.prefillLieferschein);
+        if (src) { src.invoiceId = newInv.id; if (src.status !== "storniert") src.status = "erledigt"; }
+        VIEW.prefillLieferschein = null;
       }
       await saveData();
       showToast(docType === "lieferschein" ? "Lieferschein erstellt" : "Rechnung erstellt");
@@ -3034,6 +3163,88 @@ function wireOrderForm() {
       await saveData();
       showToast("Auftrag erstellt");
       go("order-detail", newOrder.id);
+    }
+  });
+
+  recalcItemsTotal();
+}
+
+function wireQuoteForm() {
+  const form = document.getElementById("quoteForm");
+  if (!form) return;
+
+  const itemsBody = document.getElementById("itemsBody");
+
+  function wireRow(row) {
+    row.querySelector(".item-qty").addEventListener("input", recalcItemsTotal);
+    row.querySelector(".item-price").addEventListener("input", recalcItemsTotal);
+    row.querySelector(".item-desc").addEventListener("change", (e) => {
+      const opts = document.querySelectorAll("#productSuggestions option");
+      for (const o of opts) {
+        if (o.value === e.target.value) {
+          const priceInput = row.querySelector(".item-price");
+          if (priceInput && (!priceInput.value || Number(priceInput.value) === 0)) priceInput.value = o.dataset.price;
+          recalcItemsTotal();
+          break;
+        }
+      }
+    });
+    row.querySelector(".item-remove").addEventListener("click", () => {
+      if (itemsBody.querySelectorAll("tr").length <= 1) { row.querySelector(".item-desc").value=""; row.querySelector(".item-qty").value=1; row.querySelector(".item-price").value=0; recalcItemsTotal(); return; }
+      row.remove();
+      recalcItemsTotal();
+    });
+  }
+  itemsBody.querySelectorAll("tr").forEach(wireRow);
+
+  document.getElementById("btnAddItem").addEventListener("click", () => {
+    const idx = itemsBody.querySelectorAll("tr").length;
+    const wrapper = document.createElement("tbody");
+    wrapper.innerHTML = itemRow({ description: "", qty: 1, price: 0 }, idx);
+    const row = wrapper.firstElementChild;
+    itemsBody.appendChild(row);
+    wireRow(row);
+    row.querySelector(".item-desc").focus();
+  });
+
+  form.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const editId = document.getElementById("q_editId").value;
+    const customerId = document.getElementById("q_customer").value;
+    if (!customerId) { showToast("Bitte einen Kunden auswählen"); return; }
+    const date = document.getElementById("q_date").value || todayISO();
+    const rows = Array.from(document.querySelectorAll("#itemsBody tr"));
+    const items = rows.map(r => ({
+      description: r.querySelector(".item-desc").value.trim(),
+      qty: Number(r.querySelector(".item-qty").value) || 0,
+      price: Number(r.querySelector(".item-price").value) || 0,
+    })).filter(it => it.description);
+
+    if (!items.length) { showToast("Bitte mindestens eine Position angeben"); return; }
+
+    const payload = {
+      customerId,
+      date,
+      status: document.getElementById("q_status").value,
+      note: document.getElementById("q_note").value.trim(),
+      items,
+    };
+
+    if (editId) {
+      const q = quoteById(editId);
+      Object.assign(q, payload);
+      await saveData();
+      showToast("Angebot aktualisiert");
+      go("quote-detail", editId);
+    } else {
+      const info = nextQuoteNumber(date);
+      const newQuote = { id: uid("q"), number: info.number, orderId: null, invoiceId: null, createdBy: CURRENT_USER ? CURRENT_USER.name : "Unbekannt", ...payload };
+      DB.quotes.push(newQuote);
+      if (DB.settings.quoteSeqYear !== info.year) { DB.settings.quoteSeqYear = info.year; DB.settings.quoteNextSeq = info.seq + 1; }
+      else { DB.settings.quoteNextSeq = info.seq + 1; }
+      await saveData();
+      showToast("Angebot erstellt");
+      go("quote-detail", newQuote.id);
     }
   });
 
