@@ -1911,7 +1911,6 @@ function renderInvoiceDetail(id) {
         <h1>Rechnung Nr. ${esc(inv.number)}</h1>
         <div class="date">Rechnungsdatum: ${fmtDate(inv.date)}</div>
         <div class="date">Liefer-/Leistungsdatum: ${fmtDate(inv.performanceDate || inv.date)}</div>
-        ${inv.dueDate ? `<div class="date">Zahlungsziel: ${fmtDate(inv.dueDate)}</div>` : ""}
       </div>
       <div class="invoice-sender">
         ${esc(comp.name)}<br>${esc(comp.street)}<br>${esc(comp.zip)} ${esc(comp.city)}
