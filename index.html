@@ -358,6 +358,18 @@ input:focus, select:focus, textarea:focus{outline:none;border-color:var(--ink);b
 
 /* Product / customer chip */
 .chip{display:inline-block;background:var(--panel-2);color:var(--ink-soft);border-radius:99px;padding:3px 11px;font-size:11.5px;font-weight:600;}
+.stock-chip-low{background:var(--rust-tint);color:var(--rust);display:inline-flex;align-items:center;gap:4px;}
+.stock-chip-low svg{width:12px;height:12px;}
+
+/* Lagerartikel */
+.stock-thumb{width:40px;height:40px;object-fit:cover;border-radius:6px;display:block;}
+.stock-thumb-empty{display:flex;align-items:center;justify-content:center;background:var(--panel-2);color:var(--ink-faint);}
+.stock-thumb-empty svg{width:18px;height:18px;}
+.stock-photo{width:140px;height:140px;object-fit:cover;border-radius:10px;flex-shrink:0;}
+.stock-photo-empty{display:flex;align-items:center;justify-content:center;background:var(--panel-2);color:var(--ink-faint);}
+.stock-photo-empty svg{width:36px;height:36px;}
+.stock-stat-label{font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--ink-faint);margin-bottom:2px;}
+.stock-stat{font-size:32px;font-weight:700;font-family:var(--font-mono);}
 
 /* Invoice print styling — echtes Briefpapier als Hintergrund-Layer,
    Rechnungsdaten werden nur noch darüber platziert.
@@ -3054,11 +3066,48 @@ function ensureUserDefaults(db) {
   if (!Array.isArray(db.orders)) db.orders = [];
   if (db.settings.orderNextSeq === undefined) db.settings.orderNextSeq = 1;
   if (db.settings.orderSeqYear === undefined) db.settings.orderSeqYear = Number(todayISO().slice(0,4));
+  // Zeiterfassung: tatsächliche Produktionszeit pro Auftrag (Minuten), optional.
+  db.orders.forEach(o => {
+    if (o.actualProdMinutes === undefined) o.actualProdMinutes = null;
+  });
   if (!Array.isArray(db.quotes)) db.quotes = [];
   if (db.settings.quoteNextSeq === undefined) db.settings.quoteNextSeq = 1;
   if (db.settings.quoteSeqYear === undefined) db.settings.quoteSeqYear = Number(todayISO().slice(0,4));
   db.quotes.forEach(q => {
     if (q.invoiceId === undefined) q.invoiceId = null;
+  });
+  // Lagerartikel: Bestand an vor-/fertigproduzierten Artikeln (nicht der Verkaufskatalog,
+  // sondern physischer Lagerbestand mit Standort und Mindestbestand).
+  if (!Array.isArray(db.stockItems)) db.stockItems = [];
+  db.stockItems.forEach(s => {
+    if (!Array.isArray(s.movements)) s.movements = [];
+    if (s.stock === undefined) s.stock = 0;
+    if (s.minStock === undefined) s.minStock = 0;
+    if (s.photo === undefined) s.photo = null;
+    if (s.dimensions === undefined) s.dimensions = "";
+    if (s.unit === undefined) s.unit = "Stück";
+    if (s.productionLocation === undefined) s.productionLocation = "";
+    if (s.storageLocation === undefined) s.storageLocation = "";
+    if (s.personalizationLocation === undefined) s.personalizationLocation = "";
+    if (s.note === undefined) s.note = "";
+    if (s.linkedProductId === undefined) s.linkedProductId = "";
+    // Optionale Kundenzuordnung (z.B. kundenspezifische Namensschild-Rohlinge).
+    if (s.customerId === undefined) s.customerId = null;
+  });
+  // Materialressourcen: Rohmaterial-Bestand (Holzarten, Rohlinge, Plattenware …) — bewusst
+  // getrennt von den Lagerartikeln (fertige/personalisierte Ware), da beides fachlich
+  // unterschiedliche Dinge sind, auch wenn die Datenstruktur ähnlich ist.
+  if (!Array.isArray(db.materials)) db.materials = [];
+  db.materials.forEach(m => {
+    if (!Array.isArray(m.movements)) m.movements = [];
+    if (m.stock === undefined) m.stock = 0;
+    if (m.minStock === undefined) m.minStock = 0;
+    if (m.photo === undefined) m.photo = null;
+    if (m.unit === undefined) m.unit = "Stück";
+    if (m.storageLocation === undefined) m.storageLocation = "";
+    if (m.supplier === undefined) m.supplier = "";
+    if (m.note === undefined) m.note = "";
+    if (m.linkedProductId === undefined) m.linkedProductId = "";
   });
 }
 
@@ -3119,6 +3168,40 @@ function uid(prefix) {
   return prefix + "_" + Math.random().toString(36).slice(2, 9);
 }
 
+// Liest eine vom Nutzer ausgewählte Bilddatei ein, verkleinert sie auf maxDim (längste
+// Kante in px) und komprimiert sie als JPEG — damit Fotos für Lagerartikel nicht unnötig
+// viel Platz im gemeinsamen Supabase-JSON-Datensatz belegen.
+function readImageAsCompressedDataUrl(file, maxDim, quality) {
+  maxDim = maxDim || 800;
+  quality = quality || 0.75;
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(reader.error || new Error("Datei konnte nicht gelesen werden"));
+    reader.onload = () => {
+      const img = new Image();
+      img.onerror = () => reject(new Error("Bild konnte nicht gelesen werden"));
+      img.onload = () => {
+        try {
+          let { width, height } = img;
+          const scale = Math.min(1, maxDim / Math.max(width, height));
+          width = Math.max(1, Math.round(width * scale));
+          height = Math.max(1, Math.round(height * scale));
+          const canvas = document.createElement("canvas");
+          canvas.width = width;
+          canvas.height = height;
+          const ctx = canvas.getContext("2d");
+          ctx.drawImage(img, 0, 0, width, height);
+          resolve(canvas.toDataURL("image/jpeg", quality));
+        } catch (e) {
+          reject(e);
+        }
+      };
+      img.src = reader.result;
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
 function fmtCurrency(n) {
   n = Number(n) || 0;
   return n.toLocaleString("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + " €";
@@ -3174,6 +3257,21 @@ function quoteById(id) {
 }
 function quoteTotal(quote) {
   return quote.items.reduce((sum, it) => sum + (Number(it.qty) || 0) * (Number(it.price) || 0), 0);
+}
+function stockItemById(id) {
+  return (DB.stockItems || []).find(s => s.id === id);
+}
+function isLowStock(s) {
+  return Number(s.stock) < Number(s.minStock);
+}
+function lowStockItems() {
+  return (DB.stockItems || []).filter(isLowStock);
+}
+function materialById(id) {
+  return (DB.materials || []).find(m => m.id === id);
+}
+function lowStockMaterials() {
+  return (DB.materials || []).filter(isLowStock);
 }
 function customerName(c) {
   if (!c) return "Unbekannter Kunde";
@@ -3317,6 +3415,10 @@ const PAGE_TITLES = {
   "quote-detail": "Angebot",
   "quote-new": "Neues Angebot",
   "quote-edit": "Angebot bearbeiten",
+  stock: "Lagerartikel",
+  "stock-detail": "Lagerartikel",
+  materials: "Materialressourcen",
+  "material-detail": "Materialressourcen",
   settings: "Einstellungen",
   more: "Mehr",
 };
@@ -3333,7 +3435,7 @@ function renderMobileTopbar() {
 function iconLogout(){return `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 17l5-5-5-5M20 12H9M9 21H6a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h3" stroke-linecap="round" stroke-linejoin="round"/></svg>`;}
 
 function renderBottomNav() {
-  const isMore = ["products", "settings", "more", "orders", "order-detail", "order-new", "order-edit", "quotes", "quote-detail", "quote-new", "quote-edit"].includes(VIEW.tab);
+  const isMore = ["products", "settings", "more", "orders", "order-detail", "order-new", "order-edit", "quotes", "quote-detail", "quote-new", "quote-edit", "stock", "stock-detail", "materials", "material-detail"].includes(VIEW.tab);
   const items = [
     { tab: "dashboard", label: "Start", icon: iconChart() },
     { tab: "customers", label: "Kunden", icon: iconUsers() },
@@ -3384,6 +3486,16 @@ function renderMore() {
       <div class="mi-text"><b>Artikel</b><span>${DB.products.length} Artikel im Katalog</span></div>
       <div class="mi-chevron">${iconChevronRight()}</div>
     </div>
+    <div class="more-item" data-nav="stock">
+      <div class="mi-icon">${iconWarehouse()}</div>
+      <div class="mi-text"><b>Lagerartikel</b><span>${(DB.stockItems||[]).length} Artikel${lowStockItems().length ? ` · ${lowStockItems().length} unter Mindestbestand` : ""}</span></div>
+      <div class="mi-chevron">${iconChevronRight()}</div>
+    </div>
+    <div class="more-item" data-nav="materials">
+      <div class="mi-icon">${iconMaterial()}</div>
+      <div class="mi-text"><b>Materialressourcen</b><span>${(DB.materials||[]).length} Materialien${lowStockMaterials().length ? ` · ${lowStockMaterials().length} unter Mindestbestand` : ""}</span></div>
+      <div class="mi-chevron">${iconChevronRight()}</div>
+    </div>
     <div class="more-item" data-nav="settings">
       <div class="mi-icon">${iconGear()}</div>
       <div class="mi-text"><b>Einstellungen</b><span>Firmendaten &amp; Rechnungsnummern</span></div>
@@ -3400,6 +3512,8 @@ function renderSidebar() {
     { tab: "quotes", label: "Angebote", icon: iconQuote() },
     { tab: "orders", label: "Aufträge", icon: iconClipboard() },
     { tab: "products", label: "Artikel", icon: iconBox() },
+    { tab: "stock", label: "Lager", icon: iconWarehouse() },
+    { tab: "materials", label: "Material", icon: iconMaterial() },
     { tab: "invoices", label: "Rechnungen", icon: iconDoc() },
     { tab: "settings", label: "Einstellungen", icon: iconGear() },
   ];
@@ -3446,6 +3560,10 @@ function renderMain() {
     case "quote-detail": return renderQuoteDetail(VIEW.id);
     case "quote-new": return renderQuoteForm(null);
     case "quote-edit": return renderQuoteForm(VIEW.id);
+    case "stock": return renderStock();
+    case "stock-detail": return renderStockDetail(VIEW.id);
+    case "materials": return renderMaterials();
+    case "material-detail": return renderMaterialDetail(VIEW.id);
     case "settings": return renderSettings();
     case "more": return renderMore();
     default: return renderDashboard();
@@ -3467,6 +3585,9 @@ function iconTrash(){return `<svg viewBox="0 0 24 24" fill="none" stroke="curren
 function iconEdit(){return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z" stroke-linejoin="round"/></svg>`;}
 function iconPrint(){return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M7 8V4h10v4M7 17h10v4H7z"/><path d="M5 15h14v-4a1 1 0 0 0-1-1H6a1 1 0 0 0-1 1z"/></svg>`;}
 function iconMail(){return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 5.5h16a1 1 0 0 1 1 1V17a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V6.5a1 1 0 0 1 1-1Z"/><path d="m4 6.5 8 6.5 8-6.5" stroke-linecap="round" stroke-linejoin="round"/></svg>`;}
+function iconWarehouse(){return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3.5 10.5 12 4l8.5 6.5V20a1 1 0 0 1-1 1h-14a1 1 0 0 1-1-1Z" stroke-linejoin="round"/><path d="M9 21v-6h6v6" stroke-linejoin="round"/><path d="M8 13.5h8" stroke-linecap="round"/></svg>`;}
+function iconAlert(){return `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" style="vertical-align:-2px;flex-shrink:0;"><path d="M12 4 3 20h18Z" stroke-linejoin="round"/><path d="M12 10.5v4M12 17.2v.1" stroke-linecap="round"/></svg>`;}
+function iconMaterial(){return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3.5" y="5" width="17" height="4.2" rx="1" /><rect x="3.5" y="10.9" width="17" height="4.2" rx="1"/><rect x="3.5" y="16.8" width="12" height="4.2" rx="1"/></svg>`;}
 
 /* ============================================================
    DASHBOARD
@@ -3529,6 +3650,28 @@ function renderDashboard() {
     <div class="kpi-card kpi-clickable" data-nav="invoices" data-invoice-status-filter="offen"><div class="label">Offene Forderungen</div><div class="value mono">${fmtCurrency(openAmount)}</div>${overdueInvs.length ? `<div class="delta" style="color:var(--rust);font-weight:600;">${overdueInvs.length} überfällig · ${fmtCurrency(overdueAmount)}</div>` : ""}</div>
     <div class="kpi-card kpi-clickable" data-nav="orders" data-order-status-filter="in_bearbeitung"><div class="label">Aufträge in Bearbeitung</div><div class="value mono">${inProgressCount}</div></div>
   </div>
+
+  ${lowStockItems().length ? `
+  <div class="card" style="border-left:4px solid var(--rust);background:var(--rust-tint);">
+    <h2 style="color:var(--rust);margin-bottom:8px;">${iconAlert()} Lagerartikel unter Mindestbestand — Nachproduktion nötig</h2>
+    <ul class="legend-list">
+      ${lowStockItems().map(s => `
+        <li class="clickable-row" data-goto-stock="${s.id}"><span>${esc(s.name)}</span><span class="mono" style="color:var(--rust);font-weight:700;">${s.stock} / ${s.minStock} ${esc(s.unit||"Stück")}</span></li>
+      `).join("")}
+    </ul>
+  </div>
+  ` : ""}
+
+  ${lowStockMaterials().length ? `
+  <div class="card" style="border-left:4px solid var(--rust);background:var(--rust-tint);">
+    <h2 style="color:var(--rust);margin-bottom:8px;">${iconAlert()} Materialressourcen unter Mindestbestand — nachbestellen</h2>
+    <ul class="legend-list">
+      ${lowStockMaterials().map(m => `
+        <li class="clickable-row" data-goto-material="${m.id}"><span>${esc(m.name)}</span><span class="mono" style="color:var(--rust);font-weight:700;">${m.stock} / ${m.minStock} ${esc(m.unit||"Stück")}</span></li>
+      `).join("")}
+    </ul>
+  </div>
+  ` : ""}
 
   <div class="card">
     <h2>Aktuelle Aufträge</h2>
@@ -3845,6 +3988,254 @@ function renderProducts() {
 }
 
 /* ============================================================
+   LAGERARTIKEL (Bestand an vor-/fertigproduzierten Artikeln —
+   NICHT der Verkaufskatalog, sondern physischer Lagerbestand mit
+   Standort, Foto, Maßen und Mindestbestand)
+   ============================================================ */
+
+function renderStock() {
+  const q = (VIEW.stockSearch || "").toLowerCase();
+  const list = (DB.stockItems || [])
+    .filter(s => !q || s.name.toLowerCase().includes(q))
+    .sort((a,b) => {
+      const aLow = isLowStock(a) ? 0 : 1, bLow = isLowStock(b) ? 0 : 1;
+      if (aLow !== bLow) return aLow - bLow;
+      return a.name.localeCompare(b.name, "de");
+    });
+  const lowCount = lowStockItems().length;
+
+  return `
+  <div class="page-head">
+    <div><h1>Lagerartikel</h1><div class="sub">${(DB.stockItems||[]).length} Artikel im Lager${lowCount ? ` · ${lowCount} unter Mindestbestand` : ""}</div></div>
+    <div class="head-actions"><button class="btn btn-primary" id="btnNewStock">${iconPlus()} Neuer Lagerartikel</button></div>
+  </div>
+  <div class="toolbar">
+    <div class="search-box">${iconSearch()}<input type="text" id="stockSearchInput" placeholder="Lagerartikel suchen…" value="${esc(VIEW.stockSearch||"")}"></div>
+  </div>
+  <div class="card" style="padding:0;">
+    <table>
+      <thead><tr><th></th><th>Artikel</th><th>Lagerort</th><th class="num">Bestand</th><th class="num">Mindestbestand</th><th></th></tr></thead>
+      <tbody>
+        ${list.length ? list.map(s => `
+          <tr class="clickable" data-goto-stock="${s.id}">
+            <td style="width:52px;">${s.photo ? `<img src="${s.photo}" class="stock-thumb" alt="">` : `<div class="stock-thumb stock-thumb-empty">${iconWarehouse()}</div>`}</td>
+            <td><b>${esc(s.name)}</b>${s.customerId && customerById(s.customerId) ? `<br><span style="color:var(--ink-faint);font-size:11.5px">${esc(customerName(customerById(s.customerId)))}</span>` : s.dimensions ? `<br><span style="color:var(--ink-faint);font-size:11.5px">${esc(s.dimensions)}</span>` : ""}</td>
+            <td data-label="Lagerort">${esc(s.storageLocation||"—")}</td>
+            <td class="num mono" data-label="Bestand" style="${isLowStock(s)?"color:var(--rust);font-weight:700;":""}">${s.stock} ${esc(s.unit||"Stück")}</td>
+            <td class="num mono" data-label="Mindestbestand">${s.minStock} ${esc(s.unit||"Stück")}</td>
+            <td style="text-align:right">${isLowStock(s) ? `<span class="chip stock-chip-low">${iconAlert()} Nachproduzieren</span>` : ""}</td>
+          </tr>`).join("") : `<tr class="empty-row"><td colspan="6">Keine Lagerartikel gefunden</td></tr>`}
+      </tbody>
+    </table>
+  </div>
+  `;
+}
+
+function renderStockDetail(id) {
+  const s = stockItemById(id);
+  if (!s) return `<div class="card">Lagerartikel nicht gefunden. <span class="back-link" data-nav="stock">${iconArrowLeft()} Zurück</span></div>`;
+  const low = isLowStock(s);
+  const linkedProduct = s.linkedProductId ? productById(s.linkedProductId) : null;
+  const linkedCustomer = s.customerId ? customerById(s.customerId) : null;
+  const movements = (s.movements || []).slice().sort((a,b) => (b.date||"").localeCompare(a.date||""));
+
+  return `
+  <span class="back-link" data-nav="stock">${iconArrowLeft()} Alle Lagerartikel</span>
+  <div class="page-head">
+    <div><h1>${esc(s.name)}</h1><div class="sub">${esc(s.storageLocation||"Kein Lagerort hinterlegt")}${linkedCustomer ? ` · Kunde: ${esc(customerName(linkedCustomer))}` : ""}</div></div>
+    <div class="head-actions">
+      <button class="btn" data-edit-stock="${s.id}">${iconEdit()} Bearbeiten</button>
+      ${isAdmin() ? `<button class="btn btn-danger" data-delete-stock="${s.id}">${iconTrash()}</button>` : ""}
+    </div>
+  </div>
+
+  ${low ? `
+    <div class="card" style="border-left:4px solid var(--rust);background:var(--rust-tint);">
+      <p style="font-size:13px;margin:0;font-weight:600;color:var(--rust);">${iconAlert()} Bestand unter Mindestbestand — muss neu produziert werden.</p>
+    </div>
+  ` : ""}
+
+  <div class="card" style="display:flex;gap:20px;flex-wrap:wrap;align-items:flex-start;">
+    ${s.photo ? `<img src="${s.photo}" alt="${esc(s.name)}" class="stock-photo">` : `<div class="stock-photo stock-photo-empty">${iconWarehouse()}</div>`}
+    <div style="flex:1;min-width:220px;display:flex;flex-direction:column;gap:14px;">
+      <div style="display:flex;gap:24px;flex-wrap:wrap;">
+        <div>
+          <div class="stock-stat-label">Aktueller Bestand</div>
+          <div class="stock-stat" style="${low?"color:var(--rust);":""}">${s.stock} <span style="font-size:14px;font-weight:500;color:var(--ink-faint);">${esc(s.unit||"Stück")}</span></div>
+        </div>
+        <div>
+          <div class="stock-stat-label">Mindestbestand</div>
+          <div class="stock-stat" style="font-size:22px;">${s.minStock} <span style="font-size:13px;font-weight:500;color:var(--ink-faint);">${esc(s.unit||"Stück")}</span></div>
+        </div>
+      </div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;">
+        <button class="btn btn-primary" data-book-stock="${s.id}" data-book-type="ein">${iconPlus()} Einbuchen</button>
+        <button class="btn" data-book-stock="${s.id}" data-book-type="aus">Ausbuchen</button>
+      </div>
+      ${s.dimensions ? `<div><div class="stock-stat-label">Maße</div><div style="font-size:13.5px;">${esc(s.dimensions)}</div></div>` : ""}
+    </div>
+  </div>
+
+  <div class="card">
+    <h3 style="margin-bottom:10px;">Standorte</h3>
+    <div class="form-grid" style="gap:16px;">
+      <div><div class="stock-stat-label">Produktionsort</div><div style="font-size:13.5px;">${esc(s.productionLocation||"—")}</div></div>
+      <div><div class="stock-stat-label">Lagerort</div><div style="font-size:13.5px;">${esc(s.storageLocation||"—")}</div></div>
+      <div><div class="stock-stat-label">Personalisierung</div><div style="font-size:13.5px;">${esc(s.personalizationLocation||"—")}</div></div>
+    </div>
+  </div>
+
+  ${s.note || linkedProduct || linkedCustomer ? `
+  <div class="card">
+    ${linkedCustomer ? `<p style="font-size:13px;margin:0 0 8px;">Kunde: <a href="#" data-goto-customer="${linkedCustomer.id}" style="font-weight:600;color:var(--ink);">${esc(customerName(linkedCustomer))}</a></p>` : ""}
+    ${linkedProduct ? `<p style="font-size:13px;margin:0 0 8px;">Verknüpfter Katalogartikel: <b>${esc(linkedProduct.name)}</b></p>` : ""}
+    ${s.note ? `<p style="font-size:13.5px;white-space:pre-wrap;margin:0;">${esc(s.note)}</p>` : ""}
+  </div>` : ""}
+
+  <div class="card">
+    <h2>Bewegungen</h2>
+    <table>
+      <thead><tr><th>Datum</th><th>Typ</th><th class="num">Menge</th><th>Notiz</th><th>Auftrag</th></tr></thead>
+      <tbody>
+        ${movements.length ? movements.map(m => {
+          const ord = m.orderId ? orderById(m.orderId) : null;
+          return `
+          <tr>
+            <td>${fmtDate(m.date)}</td>
+            <td>${m.type === "ein" ? `<span class="chip" style="background:var(--sage-tint);color:var(--sage);">Einbuchung</span>` : `<span class="chip">Ausbuchung</span>`}</td>
+            <td class="num mono">${m.type === "ein" ? "+" : "−"}${m.qty} ${esc(s.unit||"Stück")}</td>
+            <td>${esc(m.note||"—")}</td>
+            <td>${ord ? `<a href="#" data-goto-order="${ord.id}">${esc(ord.number)}</a>` : "—"}</td>
+          </tr>`;
+        }).join("") : `<tr class="empty-row"><td colspan="5">Noch keine Bewegungen erfasst</td></tr>`}
+      </tbody>
+    </table>
+  </div>
+  `;
+}
+
+/* ============================================================
+   MATERIALRESSOURCEN — list & detail (Rohmaterial, getrennt von Lagerartikeln)
+   ============================================================ */
+
+function renderMaterials() {
+  const q = (VIEW.materialSearch || "").toLowerCase();
+  const list = (DB.materials || [])
+    .filter(m => !q || m.name.toLowerCase().includes(q))
+    .sort((a,b) => {
+      const aLow = isLowStock(a) ? 0 : 1, bLow = isLowStock(b) ? 0 : 1;
+      if (aLow !== bLow) return aLow - bLow;
+      return a.name.localeCompare(b.name, "de");
+    });
+  const lowCount = lowStockMaterials().length;
+
+  return `
+  <div class="page-head">
+    <div><h1>Materialressourcen</h1><div class="sub">${(DB.materials||[]).length} Materialien${lowCount ? ` · ${lowCount} unter Mindestbestand` : ""}</div></div>
+    <div class="head-actions"><button class="btn btn-primary" id="btnNewMaterial">${iconPlus()} Neues Material</button></div>
+  </div>
+  <div class="toolbar">
+    <div class="search-box">${iconSearch()}<input type="text" id="materialSearchInput" placeholder="Material suchen…" value="${esc(VIEW.materialSearch||"")}"></div>
+  </div>
+  <div class="card" style="padding:0;">
+    <table>
+      <thead><tr><th></th><th>Material</th><th>Lagerort</th><th class="num">Bestand</th><th class="num">Mindestbestand</th><th></th></tr></thead>
+      <tbody>
+        ${list.length ? list.map(m => `
+          <tr class="clickable" data-goto-material="${m.id}">
+            <td style="width:52px;">${m.photo ? `<img src="${m.photo}" class="stock-thumb" alt="">` : `<div class="stock-thumb stock-thumb-empty">${iconMaterial()}</div>`}</td>
+            <td><b>${esc(m.name)}</b>${m.supplier ? `<br><span style="color:var(--ink-faint);font-size:11.5px">${esc(m.supplier)}</span>` : ""}</td>
+            <td data-label="Lagerort">${esc(m.storageLocation||"—")}</td>
+            <td class="num mono" data-label="Bestand" style="${isLowStock(m)?"color:var(--rust);font-weight:700;":""}">${m.stock} ${esc(m.unit||"Stück")}</td>
+            <td class="num mono" data-label="Mindestbestand">${m.minStock} ${esc(m.unit||"Stück")}</td>
+            <td style="text-align:right">${isLowStock(m) ? `<span class="chip stock-chip-low">${iconAlert()} Nachbestellen</span>` : ""}</td>
+          </tr>`).join("") : `<tr class="empty-row"><td colspan="6">Keine Materialien gefunden</td></tr>`}
+      </tbody>
+    </table>
+  </div>
+  `;
+}
+
+function renderMaterialDetail(id) {
+  const m = materialById(id);
+  if (!m) return `<div class="card">Material nicht gefunden. <span class="back-link" data-nav="materials">${iconArrowLeft()} Zurück</span></div>`;
+  const low = isLowStock(m);
+  const linkedProduct = m.linkedProductId ? productById(m.linkedProductId) : null;
+  const movements = (m.movements || []).slice().sort((a,b) => (b.date||"").localeCompare(a.date||""));
+
+  return `
+  <span class="back-link" data-nav="materials">${iconArrowLeft()} Alle Materialien</span>
+  <div class="page-head">
+    <div><h1>${esc(m.name)}</h1><div class="sub">${esc(m.storageLocation||"Kein Lagerort hinterlegt")}${m.supplier ? ` · Lieferant: ${esc(m.supplier)}` : ""}</div></div>
+    <div class="head-actions">
+      <button class="btn" data-edit-material="${m.id}">${iconEdit()} Bearbeiten</button>
+      ${isAdmin() ? `<button class="btn btn-danger" data-delete-material="${m.id}">${iconTrash()}</button>` : ""}
+    </div>
+  </div>
+
+  ${low ? `
+    <div class="card" style="border-left:4px solid var(--rust);background:var(--rust-tint);">
+      <p style="font-size:13px;margin:0;font-weight:600;color:var(--rust);">${iconAlert()} Bestand unter Mindestbestand — bitte nachbestellen.</p>
+    </div>
+  ` : ""}
+
+  <div class="card" style="display:flex;gap:20px;flex-wrap:wrap;align-items:flex-start;">
+    ${m.photo ? `<img src="${m.photo}" alt="${esc(m.name)}" class="stock-photo">` : `<div class="stock-photo stock-photo-empty">${iconMaterial()}</div>`}
+    <div style="flex:1;min-width:220px;display:flex;flex-direction:column;gap:14px;">
+      <div style="display:flex;gap:24px;flex-wrap:wrap;">
+        <div>
+          <div class="stock-stat-label">Aktueller Bestand</div>
+          <div class="stock-stat" style="${low?"color:var(--rust);":""}">${m.stock} <span style="font-size:14px;font-weight:500;color:var(--ink-faint);">${esc(m.unit||"Stück")}</span></div>
+        </div>
+        <div>
+          <div class="stock-stat-label">Mindestbestand</div>
+          <div class="stock-stat" style="font-size:22px;">${m.minStock} <span style="font-size:13px;font-weight:500;color:var(--ink-faint);">${esc(m.unit||"Stück")}</span></div>
+        </div>
+      </div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;">
+        <button class="btn btn-primary" data-book-material="${m.id}" data-book-type="ein">${iconPlus()} Einbuchen</button>
+        <button class="btn" data-book-material="${m.id}" data-book-type="aus">Ausbuchen</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3 style="margin-bottom:10px;">Lagerort & Lieferant</h3>
+    <div class="form-grid" style="gap:16px;">
+      <div><div class="stock-stat-label">Lagerort</div><div style="font-size:13.5px;">${esc(m.storageLocation||"—")}</div></div>
+      <div><div class="stock-stat-label">Lieferant</div><div style="font-size:13.5px;">${esc(m.supplier||"—")}</div></div>
+    </div>
+  </div>
+
+  ${m.note || linkedProduct ? `
+  <div class="card">
+    ${linkedProduct ? `<p style="font-size:13px;margin:0 0 8px;">Verknüpfter Katalogartikel: <b>${esc(linkedProduct.name)}</b></p>` : ""}
+    ${m.note ? `<p style="font-size:13.5px;white-space:pre-wrap;margin:0;">${esc(m.note)}</p>` : ""}
+  </div>` : ""}
+
+  <div class="card">
+    <h2>Bewegungen</h2>
+    <table>
+      <thead><tr><th>Datum</th><th>Typ</th><th class="num">Menge</th><th>Notiz</th><th>Auftrag</th></tr></thead>
+      <tbody>
+        ${movements.length ? movements.map(mv => {
+          const ord = mv.orderId ? orderById(mv.orderId) : null;
+          return `
+          <tr>
+            <td>${fmtDate(mv.date)}</td>
+            <td>${mv.type === "ein" ? `<span class="chip" style="background:var(--sage-tint);color:var(--sage);">Einbuchung</span>` : `<span class="chip">Ausbuchung</span>`}</td>
+            <td class="num mono">${mv.type === "ein" ? "+" : "−"}${mv.qty} ${esc(m.unit||"Stück")}</td>
+            <td>${esc(mv.note||"—")}</td>
+            <td>${ord ? `<a href="#" data-goto-order="${ord.id}">${esc(ord.number)}</a>` : "—"}</td>
+          </tr>`;
+        }).join("") : `<tr class="empty-row"><td colspan="5">Noch keine Bewegungen erfasst</td></tr>`}
+      </tbody>
+    </table>
+  </div>
+  `;
+}
+
+/* ============================================================
    INVOICES — list & detail
    ============================================================ */
 
@@ -3956,6 +4347,16 @@ function renderOrderDetail(id) {
   const c = customerById(order.customerId);
   const total = orderTotal(order);
   const linkedInvoice = order.invoiceId ? invoiceById(order.invoiceId) : null;
+  // Zeiterfassung: geplante Produktionszeit wird best-effort aus dem Artikelkatalog
+  // ermittelt (Positionsbeschreibung == Artikelname), da Auftragspositionen keine feste
+  // productId-Verknüpfung haben — funktioniert zuverlässig, wenn die Beschreibung aus dem
+  // Autocomplete-Vorschlag übernommen wurde.
+  const hasPlannedTime = order.items.some(it => DB.products.some(pr => pr.name === it.description && pr.prodTimeMinutes));
+  const plannedProdMinutes = order.items.reduce((sum, it) => {
+    const p = DB.products.find(pr => pr.name === it.description);
+    return sum + (p && p.prodTimeMinutes ? p.prodTimeMinutes * (Number(it.qty)||0) : 0);
+  }, 0);
+  const showTimeCard = hasPlannedTime || order.actualProdMinutes != null;
 
   return `
   <span class="back-link" data-nav="orders">${iconArrowLeft()} Alle Aufträge</span>
@@ -4002,6 +4403,18 @@ function renderOrderDetail(id) {
   </div>
 
   ${order.note ? `<div class="card"><h2>Notiz</h2><p style="font-size:13.5px;white-space:pre-wrap;margin:0;">${esc(order.note)}</p></div>` : ""}
+
+  ${showTimeCard ? `
+  <div class="card">
+    <h2>Zeiterfassung</h2>
+    <div style="display:flex;gap:24px;flex-wrap:wrap;">
+      ${hasPlannedTime ? `<div><div class="stock-stat-label">Geplant (lt. Artikelkatalog)</div><div style="font-size:16px;font-weight:700;">${plannedProdMinutes} Min.</div></div>` : ""}
+      <div><div class="stock-stat-label">Tatsächlich</div><div style="font-size:16px;font-weight:700;">${order.actualProdMinutes != null ? order.actualProdMinutes + " Min." : "—"}</div></div>
+      ${hasPlannedTime && order.actualProdMinutes != null ? `<div><div class="stock-stat-label">Abweichung</div><div style="font-size:16px;font-weight:700;${order.actualProdMinutes > plannedProdMinutes ? "color:var(--rust);" : "color:var(--sage);"}">${order.actualProdMinutes - plannedProdMinutes > 0 ? "+" : ""}${order.actualProdMinutes - plannedProdMinutes} Min.</div></div>` : ""}
+    </div>
+    ${!hasPlannedTime ? `<p style="font-size:11.5px;color:var(--ink-faint);margin:10px 0 0;">Keine geplante Zeit ermittelbar — dafür müssen Positionsbeschreibungen exakt einem Artikel im Katalog entsprechen, der eine Produktionszeit hinterlegt hat.</p>` : ""}
+  </div>
+  ` : ""}
 
   <div class="card">
     <h3 style="margin-bottom:8px;">Details</h3>
@@ -4614,6 +5027,10 @@ function renderOrderForm(editId) {
         <label>Notiz</label>
         <textarea id="o_note" placeholder="z.B. Absprachen, Liefertermin, Besonderheiten">${editing ? esc(editing.note||"") : (prefillQuote ? esc(prefillQuote.note||"") : "")}</textarea>
       </div>
+      <div class="field">
+        <label>Tatsächliche Produktionszeit (Minuten, optional)</label>
+        <input type="number" step="1" min="0" id="o_actualprodmin" placeholder="z.B. 180" value="${editing && editing.actualProdMinutes != null ? editing.actualProdMinutes : ""}">
+      </div>
     </div>
 
     <div class="card">
@@ -5060,6 +5477,288 @@ async function deleteProduct(id) {
   render();
 }
 
+/* ============================================================
+   MODALS: Lagerartikel (Anlegen/Bearbeiten, Ein-/Ausbuchen)
+   ============================================================ */
+
+function openStockModal(id) {
+  const s = id ? stockItemById(id) : null;
+  const productOptions = DB.products.slice().sort((a,b)=>a.name.localeCompare(b.name,"de"))
+    .map(p => `<option value="${p.id}" ${s && s.linkedProductId===p.id?"selected":""}>${esc(p.name)}</option>`).join("");
+  const customerOptions = DB.customers.slice().sort((a,b)=>a.name.localeCompare(b.name,"de"))
+    .map(c => `<option value="${c.id}" ${s && s.customerId===c.id?"selected":""}>${esc(customerName(c))}</option>`).join("");
+  openModal(`
+    <h2>${s ? "Lagerartikel bearbeiten" : "Neuer Lagerartikel"}</h2>
+    <form id="stockForm">
+      <div class="field">
+        <label>Foto (optional)</label>
+        <div style="display:flex;align-items:center;gap:12px;">
+          <img id="m_stock_photo_preview" src="${s&&s.photo?s.photo:""}" style="width:64px;height:64px;object-fit:cover;border-radius:8px;background:var(--panel-2);${s&&s.photo?"":"display:none;"}">
+          <input type="file" accept="image/*" id="m_stock_photo_file">
+        </div>
+        <input type="hidden" id="m_stock_photo_data" value="${s&&s.photo?esc(s.photo):""}">
+      </div>
+      <div class="field"><label>Artikelbezeichnung</label><input type="text" id="m_stock_name" value="${s?esc(s.name):""}" required placeholder="z.B. Namensschild-Rohling"></div>
+      <div class="form-grid">
+        <div class="field"><label>Maße</label><input type="text" id="m_stock_dims" placeholder="z.B. 10 x 3 x 0,5 cm" value="${s?esc(s.dimensions):""}"></div>
+        <div class="field"><label>Einheit</label><input type="text" id="m_stock_unit" value="${s?esc(s.unit):"Stück"}"></div>
+      </div>
+      <div class="form-grid">
+        <div class="field"><label>Aktueller Bestand</label><input type="number" step="1" min="0" id="m_stock_stock" value="${s?s.stock:0}"></div>
+        <div class="field"><label>Mindestbestand</label><input type="number" step="1" min="0" id="m_stock_minstock" value="${s?s.minStock:0}"></div>
+      </div>
+      <p style="font-size:11.5px;color:var(--ink-faint);margin:-8px 0 4px;">Für laufende Zu-/Abgänge bitte "Einbuchen"/"Ausbuchen" auf der Detailseite nutzen — diese Felder sind für den Start-/Korrekturwert (z.B. Inventur) gedacht.</p>
+
+      <h3 style="margin:18px 0 4px;">Standorte</h3>
+      <div class="field"><label>Produktionsort</label><input type="text" id="m_stock_prodloc" placeholder="z.B. Erfurt" value="${s?esc(s.productionLocation):""}"></div>
+      <div class="form-grid">
+        <div class="field"><label>Lagerort</label><input type="text" id="m_stock_storeloc" placeholder="z.B. Braunlage" value="${s?esc(s.storageLocation):""}"></div>
+        <div class="field"><label>Personalisierung</label><input type="text" id="m_stock_persloc" placeholder="z.B. Braunlage" value="${s?esc(s.personalizationLocation):""}"></div>
+      </div>
+
+      <div class="field"><label>Verknüpfter Katalogartikel (optional)</label><select id="m_stock_product"><option value="">— keiner —</option>${productOptions}</select></div>
+      <div class="field"><label>Kunde (optional)</label><select id="m_stock_customer"><option value="">— kein bestimmter Kunde —</option>${customerOptions}</select></div>
+      <div class="field"><label>Notiz</label><textarea id="m_stock_note" placeholder="z.B. Besonderheiten, weitere Kunden…">${s?esc(s.note):""}</textarea></div>
+
+      <div class="modal-actions">
+        <button type="button" class="btn" id="btnCancelModal">Abbrechen</button>
+        <button type="submit" class="btn btn-primary">Speichern</button>
+      </div>
+      <input type="hidden" id="m_stock_id" value="${s?s.id:""}">
+    </form>
+  `);
+  document.getElementById("btnCancelModal").onclick = closeModal;
+
+  const fileInput = document.getElementById("m_stock_photo_file");
+  fileInput.addEventListener("change", async () => {
+    const file = fileInput.files && fileInput.files[0];
+    if (!file) return;
+    try {
+      const dataUrl = await readImageAsCompressedDataUrl(file, 800, 0.75);
+      document.getElementById("m_stock_photo_data").value = dataUrl;
+      const preview = document.getElementById("m_stock_photo_preview");
+      preview.src = dataUrl;
+      preview.style.display = "";
+    } catch (e) {
+      showToast("Foto konnte nicht gelesen werden");
+    }
+  });
+
+  document.getElementById("stockForm").onsubmit = async (e) => {
+    e.preventDefault();
+    const name = document.getElementById("m_stock_name").value.trim();
+    if (!name) return;
+    const data = {
+      id: document.getElementById("m_stock_id").value || uid("stk"),
+      name,
+      photo: document.getElementById("m_stock_photo_data").value || null,
+      dimensions: document.getElementById("m_stock_dims").value.trim(),
+      unit: document.getElementById("m_stock_unit").value.trim() || "Stück",
+      stock: Number(document.getElementById("m_stock_stock").value) || 0,
+      minStock: Number(document.getElementById("m_stock_minstock").value) || 0,
+      productionLocation: document.getElementById("m_stock_prodloc").value.trim(),
+      storageLocation: document.getElementById("m_stock_storeloc").value.trim(),
+      personalizationLocation: document.getElementById("m_stock_persloc").value.trim(),
+      linkedProductId: document.getElementById("m_stock_product").value,
+      customerId: document.getElementById("m_stock_customer").value || null,
+      note: document.getElementById("m_stock_note").value.trim(),
+      movements: s ? s.movements : [],
+      createdBy: s ? s.createdBy : (CURRENT_USER ? CURRENT_USER.name : "Unbekannt"),
+    };
+    if (!Array.isArray(DB.stockItems)) DB.stockItems = [];
+    const idx = DB.stockItems.findIndex(x => x.id === data.id);
+    if (idx >= 0) DB.stockItems[idx] = data;
+    else DB.stockItems.push(data);
+    await saveData();
+    closeModal();
+    if (VIEW.tab === "stock-detail") render();
+    else go("stock-detail", data.id);
+  };
+}
+
+async function deleteStockItem(id) {
+  if (!isAdmin()) return;
+  if (!confirm("Diesen Lagerartikel wirklich löschen? Die Bewegungshistorie geht dabei verloren.")) return;
+  DB.stockItems = (DB.stockItems || []).filter(s => s.id !== id);
+  await saveData();
+  go("stock");
+}
+
+function openStockBookingModal(id, type) {
+  const s = stockItemById(id);
+  if (!s) return;
+  const isEin = type === "ein";
+  const openOrders = DB.orders.slice().sort((a,b) => b.number.localeCompare(a.number));
+  openModal(`
+    <h2>${isEin ? "Einbuchen" : "Ausbuchen"}: ${esc(s.name)}</h2>
+    <p style="font-size:13px;color:var(--ink-soft);margin:0 0 14px;">Aktueller Bestand: <b>${s.stock} ${esc(s.unit||"Stück")}</b></p>
+    <form id="stockBookingForm">
+      <div class="field"><label>Menge</label><input type="number" step="1" min="1" id="m_book_qty" value="1" required autofocus></div>
+      <div class="field">
+        <label>Auftrag (optional)</label>
+        <select id="m_book_order">
+          <option value="">— kein Auftrag / sonstiger Grund —</option>
+          ${openOrders.map(o => `<option value="${o.id}">${esc(o.number)} · ${esc(customerName(customerById(o.customerId)))}</option>`).join("")}
+        </select>
+      </div>
+      <div class="field"><label>Notiz (optional)</label><input type="text" id="m_book_note" placeholder="${isEin ? 'z.B. Produktion Charge Erfurt' : 'z.B. Kommission für Rechnung 2026041'}"></div>
+      <div id="stockBookingError" class="lock-error" style="text-align:left;"></div>
+      <div class="modal-actions">
+        <button type="button" class="btn" id="btnCancelModal">Abbrechen</button>
+        <button type="submit" class="btn btn-primary">${isEin ? "Einbuchen" : "Ausbuchen"}</button>
+      </div>
+    </form>
+  `);
+  document.getElementById("btnCancelModal").onclick = closeModal;
+  document.getElementById("stockBookingForm").onsubmit = async (e) => {
+    e.preventDefault();
+    const qty = Number(document.getElementById("m_book_qty").value) || 0;
+    if (qty <= 0) { document.getElementById("stockBookingError").textContent = "Bitte eine Menge größer 0 angeben."; return; }
+    if (!isEin && qty > s.stock) { document.getElementById("stockBookingError").textContent = `Es sind nur ${s.stock} ${s.unit||"Stück"} auf Lager.`; return; }
+    const orderId = document.getElementById("m_book_order").value || null;
+    const note = document.getElementById("m_book_note").value.trim();
+    s.stock = isEin ? (Number(s.stock)||0) + qty : (Number(s.stock)||0) - qty;
+    if (!Array.isArray(s.movements)) s.movements = [];
+    s.movements.push({ id: uid("mv"), date: todayISO(), type: isEin ? "ein" : "aus", qty, note, orderId });
+    await saveData();
+    closeModal();
+    render();
+  };
+}
+
+function openMaterialModal(id) {
+  const m = id ? materialById(id) : null;
+  const productOptions = DB.products.slice().sort((a,b)=>a.name.localeCompare(b.name,"de"))
+    .map(p => `<option value="${p.id}" ${m && m.linkedProductId===p.id?"selected":""}>${esc(p.name)}</option>`).join("");
+  openModal(`
+    <h2>${m ? "Material bearbeiten" : "Neues Material"}</h2>
+    <form id="materialForm">
+      <div class="field">
+        <label>Foto (optional)</label>
+        <div style="display:flex;align-items:center;gap:12px;">
+          <img id="m_material_photo_preview" src="${m&&m.photo?m.photo:""}" style="width:64px;height:64px;object-fit:cover;border-radius:8px;background:var(--panel-2);${m&&m.photo?"":"display:none;"}">
+          <input type="file" accept="image/*" id="m_material_photo_file">
+        </div>
+        <input type="hidden" id="m_material_photo_data" value="${m&&m.photo?esc(m.photo):""}">
+      </div>
+      <div class="field"><label>Materialbezeichnung</label><input type="text" id="m_material_name" value="${m?esc(m.name):""}" required placeholder="z.B. Buchensperrholz 4mm"></div>
+      <div class="form-grid">
+        <div class="field"><label>Einheit</label><input type="text" id="m_material_unit" value="${m?esc(m.unit):"Stück"}"></div>
+        <div class="field"><label>Lieferant</label><input type="text" id="m_material_supplier" placeholder="z.B. Holzhandel Müller" value="${m?esc(m.supplier):""}"></div>
+      </div>
+      <div class="form-grid">
+        <div class="field"><label>Aktueller Bestand</label><input type="number" step="1" min="0" id="m_material_stock" value="${m?m.stock:0}"></div>
+        <div class="field"><label>Mindestbestand</label><input type="number" step="1" min="0" id="m_material_minstock" value="${m?m.minStock:0}"></div>
+      </div>
+      <p style="font-size:11.5px;color:var(--ink-faint);margin:-8px 0 4px;">Für laufende Zu-/Abgänge bitte "Einbuchen"/"Ausbuchen" auf der Detailseite nutzen — diese Felder sind für den Start-/Korrekturwert (z.B. Inventur) gedacht.</p>
+
+      <div class="field"><label>Lagerort</label><input type="text" id="m_material_storeloc" placeholder="z.B. Braunlage" value="${m?esc(m.storageLocation):""}"></div>
+      <div class="field"><label>Verknüpfter Katalogartikel (optional)</label><select id="m_material_product"><option value="">— keiner —</option>${productOptions}</select></div>
+      <div class="field"><label>Notiz</label><textarea id="m_material_note" placeholder="z.B. Besonderheiten, Bezugsquelle…">${m?esc(m.note):""}</textarea></div>
+
+      <div class="modal-actions">
+        <button type="button" class="btn" id="btnCancelModal">Abbrechen</button>
+        <button type="submit" class="btn btn-primary">Speichern</button>
+      </div>
+      <input type="hidden" id="m_material_id" value="${m?m.id:""}">
+    </form>
+  `);
+  document.getElementById("btnCancelModal").onclick = closeModal;
+
+  const fileInput = document.getElementById("m_material_photo_file");
+  fileInput.addEventListener("change", async () => {
+    const file = fileInput.files && fileInput.files[0];
+    if (!file) return;
+    try {
+      const dataUrl = await readImageAsCompressedDataUrl(file, 800, 0.75);
+      document.getElementById("m_material_photo_data").value = dataUrl;
+      const preview = document.getElementById("m_material_photo_preview");
+      preview.src = dataUrl;
+      preview.style.display = "";
+    } catch (e) {
+      showToast("Foto konnte nicht gelesen werden");
+    }
+  });
+
+  document.getElementById("materialForm").onsubmit = async (e) => {
+    e.preventDefault();
+    const name = document.getElementById("m_material_name").value.trim();
+    if (!name) return;
+    const data = {
+      id: document.getElementById("m_material_id").value || uid("mat"),
+      name,
+      photo: document.getElementById("m_material_photo_data").value || null,
+      unit: document.getElementById("m_material_unit").value.trim() || "Stück",
+      supplier: document.getElementById("m_material_supplier").value.trim(),
+      stock: Number(document.getElementById("m_material_stock").value) || 0,
+      minStock: Number(document.getElementById("m_material_minstock").value) || 0,
+      storageLocation: document.getElementById("m_material_storeloc").value.trim(),
+      linkedProductId: document.getElementById("m_material_product").value,
+      note: document.getElementById("m_material_note").value.trim(),
+      movements: m ? m.movements : [],
+      createdBy: m ? m.createdBy : (CURRENT_USER ? CURRENT_USER.name : "Unbekannt"),
+    };
+    if (!Array.isArray(DB.materials)) DB.materials = [];
+    const idx = DB.materials.findIndex(x => x.id === data.id);
+    if (idx >= 0) DB.materials[idx] = data;
+    else DB.materials.push(data);
+    await saveData();
+    closeModal();
+    if (VIEW.tab === "material-detail") render();
+    else go("material-detail", data.id);
+  };
+}
+
+async function deleteMaterial(id) {
+  if (!isAdmin()) return;
+  if (!confirm("Dieses Material wirklich löschen? Die Bewegungshistorie geht dabei verloren.")) return;
+  DB.materials = (DB.materials || []).filter(m => m.id !== id);
+  await saveData();
+  go("materials");
+}
+
+function openMaterialBookingModal(id, type) {
+  const m = materialById(id);
+  if (!m) return;
+  const isEin = type === "ein";
+  const openOrders = DB.orders.slice().sort((a,b) => b.number.localeCompare(a.number));
+  openModal(`
+    <h2>${isEin ? "Einbuchen" : "Ausbuchen"}: ${esc(m.name)}</h2>
+    <p style="font-size:13px;color:var(--ink-soft);margin:0 0 14px;">Aktueller Bestand: <b>${m.stock} ${esc(m.unit||"Stück")}</b></p>
+    <form id="materialBookingForm">
+      <div class="field"><label>Menge</label><input type="number" step="1" min="1" id="m_matbook_qty" value="1" required autofocus></div>
+      <div class="field">
+        <label>Auftrag (optional)</label>
+        <select id="m_matbook_order">
+          <option value="">— kein Auftrag / sonstiger Grund —</option>
+          ${openOrders.map(o => `<option value="${o.id}">${esc(o.number)} · ${esc(customerName(customerById(o.customerId)))}</option>`).join("")}
+        </select>
+      </div>
+      <div class="field"><label>Notiz (optional)</label><input type="text" id="m_matbook_note" placeholder="${isEin ? 'z.B. Wareneingang Lieferant' : 'z.B. Verbrauch für Auftrag'}"></div>
+      <div id="materialBookingError" class="lock-error" style="text-align:left;"></div>
+      <div class="modal-actions">
+        <button type="button" class="btn" id="btnCancelModal">Abbrechen</button>
+        <button type="submit" class="btn btn-primary">${isEin ? "Einbuchen" : "Ausbuchen"}</button>
+      </div>
+    </form>
+  `);
+  document.getElementById("btnCancelModal").onclick = closeModal;
+  document.getElementById("materialBookingForm").onsubmit = async (e) => {
+    e.preventDefault();
+    const qty = Number(document.getElementById("m_matbook_qty").value) || 0;
+    if (qty <= 0) { document.getElementById("materialBookingError").textContent = "Bitte eine Menge größer 0 angeben."; return; }
+    if (!isEin && qty > m.stock) { document.getElementById("materialBookingError").textContent = `Es sind nur ${m.stock} ${m.unit||"Stück"} auf Lager.`; return; }
+    const orderId = document.getElementById("m_matbook_order").value || null;
+    const note = document.getElementById("m_matbook_note").value.trim();
+    m.stock = isEin ? (Number(m.stock)||0) + qty : (Number(m.stock)||0) - qty;
+    if (!Array.isArray(m.movements)) m.movements = [];
+    m.movements.push({ id: uid("mv"), date: todayISO(), type: isEin ? "ein" : "aus", qty, note, orderId });
+    await saveData();
+    closeModal();
+    render();
+  };
+}
+
 function openDeleteInvoiceModal(id) {
   const inv = invoiceById(id);
   if (!inv || !CURRENT_USER) return;
@@ -5171,6 +5870,30 @@ function attachGlobalHandlers() {
   document.querySelectorAll("[data-goto-order]").forEach(el => {
     el.addEventListener("click", () => go("order-detail", el.dataset.gotoOrder));
   });
+  document.querySelectorAll("[data-goto-stock]").forEach(el => {
+    el.addEventListener("click", () => go("stock-detail", el.dataset.gotoStock));
+  });
+  document.querySelectorAll("[data-edit-stock]").forEach(el => {
+    el.addEventListener("click", (e) => { e.stopPropagation(); openStockModal(el.dataset.editStock); });
+  });
+  document.querySelectorAll("[data-delete-stock]").forEach(el => {
+    el.addEventListener("click", (e) => { e.stopPropagation(); deleteStockItem(el.dataset.deleteStock); });
+  });
+  document.querySelectorAll("[data-book-stock]").forEach(el => {
+    el.addEventListener("click", (e) => { e.stopPropagation(); openStockBookingModal(el.dataset.bookStock, el.dataset.bookType); });
+  });
+  document.querySelectorAll("[data-goto-material]").forEach(el => {
+    el.addEventListener("click", () => go("material-detail", el.dataset.gotoMaterial));
+  });
+  document.querySelectorAll("[data-edit-material]").forEach(el => {
+    el.addEventListener("click", (e) => { e.stopPropagation(); openMaterialModal(el.dataset.editMaterial); });
+  });
+  document.querySelectorAll("[data-delete-material]").forEach(el => {
+    el.addEventListener("click", (e) => { e.stopPropagation(); deleteMaterial(el.dataset.deleteMaterial); });
+  });
+  document.querySelectorAll("[data-book-material]").forEach(el => {
+    el.addEventListener("click", (e) => { e.stopPropagation(); openMaterialBookingModal(el.dataset.bookMaterial, el.dataset.bookType); });
+  });
   document.querySelectorAll("[data-edit-customer]").forEach(el => {
     el.addEventListener("click", (e) => { e.stopPropagation(); openCustomerModal(el.dataset.editCustomer); });
   });
@@ -5228,11 +5951,19 @@ function attachGlobalHandlers() {
   if (btnNewCustomer) btnNewCustomer.onclick = () => openCustomerModal(null);
   const btnNewProduct = document.getElementById("btnNewProduct");
   if (btnNewProduct) btnNewProduct.onclick = () => openProductModal(null);
+  const btnNewStock = document.getElementById("btnNewStock");
+  if (btnNewStock) btnNewStock.onclick = () => openStockModal(null);
+  const btnNewMaterial = document.getElementById("btnNewMaterial");
+  if (btnNewMaterial) btnNewMaterial.onclick = () => openMaterialModal(null);
 
   const custSearch = document.getElementById("custSearchInput");
   if (custSearch) custSearch.oninput = (e) => { VIEW.custSearch = e.target.value; renderInPlace("customers"); };
   const prodSearch = document.getElementById("prodSearchInput");
   if (prodSearch) prodSearch.oninput = (e) => { VIEW.prodSearch = e.target.value; renderInPlace("products"); };
+  const stockSearch = document.getElementById("stockSearchInput");
+  if (stockSearch) stockSearch.oninput = (e) => { VIEW.stockSearch = e.target.value; renderInPlace("stock"); };
+  const materialSearch = document.getElementById("materialSearchInput");
+  if (materialSearch) materialSearch.oninput = (e) => { VIEW.materialSearch = e.target.value; renderInPlace("materials"); };
   const invSearch = document.getElementById("invSearchInput");
   if (invSearch) invSearch.oninput = (e) => { VIEW.invSearch = e.target.value; renderInPlace("invoices"); };
   const invStatusFilter = document.getElementById("invStatusFilter");
@@ -5616,11 +6347,13 @@ function wireOrderForm() {
 
     if (!items.length) { showToast("Bitte mindestens eine Position angeben"); return; }
 
+    const actualProdMinRaw = document.getElementById("o_actualprodmin").value;
     const payload = {
       customerId,
       date,
       status: document.getElementById("o_status").value,
       note: document.getElementById("o_note").value.trim(),
+      actualProdMinutes: actualProdMinRaw === "" ? null : (Number(actualProdMinRaw) || 0),
       items,
     };
 
