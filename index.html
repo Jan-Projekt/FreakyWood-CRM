@@ -804,6 +804,34 @@ mark{background:#FFF1A8;color:inherit;border-radius:2px;padding:0 1px;}
 @media (max-width:860px){ .remote-banner{bottom:calc(84px + var(--safe-bottom));} }
 @media print{ .remote-banner{display:none !important;} }
 .lock-info{font-size:12.5px;color:var(--rust);margin:0 0 12px;line-height:1.45;}
+
+/* ===== FiBu ===== */
+.seg{display:inline-flex;background:var(--panel-2);border:1px solid var(--line);border-radius:var(--radius-sm);padding:3px;gap:2px;flex-wrap:wrap;}
+.seg-btn{border:none;background:transparent;font:inherit;font-size:13px;font-weight:600;color:var(--ink-soft);padding:6px 12px;border-radius:6px;cursor:pointer;}
+.seg-btn.active{background:var(--panel);color:var(--ink);box-shadow:var(--shadow);}
+.fibu-toolbar{align-items:center;}
+.fb-row{display:grid;grid-template-columns:minmax(120px,1.3fr) 2fr auto;gap:10px;align-items:center;margin:0 0 9px;font-size:13px;}
+.fb-label{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.fb-track{height:8px;background:var(--panel-2);border-radius:99px;overflow:hidden;}
+.fb-fill{height:100%;background:var(--ink);border-radius:99px;}
+.fb-val{font-size:12.5px;white-space:nowrap;text-align:right;}
+.fb-val span{display:inline-block;min-width:38px;color:var(--ink-faint);margin-left:6px;}
+.fb-empty{font-size:13px;color:var(--ink-faint);margin:0;}
+.fb-note{font-size:12px;color:var(--ink-faint);line-height:1.5;margin:10px 0 0;}
+.fb-desc{font-size:12px;color:var(--ink-faint);}
+.fb-missing{font-size:11px;color:var(--rust);background:var(--rust-tint);border-radius:99px;padding:2px 8px;white-space:nowrap;}
+.fibu-hints{border-left:4px solid var(--rust);display:flex;flex-direction:column;gap:6px;font-size:13px;}
+.fibu-hints a{color:var(--ink);font-weight:600;}
+.fb-beleg-box{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;border:1px dashed var(--line);border-radius:var(--radius-sm);padding:10px 12px;font-size:13px;}
+.euer-head{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin-bottom:14px;}
+.euer-table td{padding:7px 10px;font-size:13px;}
+.euer-sec td{font-weight:700;text-transform:uppercase;font-size:11px;letter-spacing:.06em;color:var(--ink-faint);padding-top:16px;border-bottom:1px solid var(--line);}
+.euer-sum td{font-weight:700;border-top:1px solid var(--ink);}
+.euer-total td{font-weight:800;font-size:15px;border-top:2px solid var(--ink);border-bottom:2px solid var(--ink);}
+.fb-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;align-items:start;}
+.fb-grid > .card{margin-bottom:16px;}
+@media (max-width:860px){ .fb-grid{grid-template-columns:1fr;} .fb-row{grid-template-columns:1fr 1fr auto;} }
+@media print{ .euer-sheet{box-shadow:none;border:none;} }
 </style>
 </head>
 <body>
@@ -3133,7 +3161,7 @@ qrcode.stringToBytes = qrcode.stringToBytesFuncs['UTF-8'];
    ============================================================ */
 
 const STORAGE_KEY = "freakywood-crm-data-v1";
-const APP_VERSION = "2026.10.30.2"; // Format: JJJJ.MM.TT.N — bei jeder Änderung an dieser Datei hochzählen
+const APP_VERSION = "2026.10.30.3"; // Format: JJJJ.MM.TT.N — bei jeder Änderung an dieser Datei hochzählen
 
 let DB = null;           // { customers, products, invoices, settings }
 let VIEW = { tab: "dashboard", id: null }; // current view state
@@ -3500,6 +3528,7 @@ const PAGE_TITLES = {
   search: "Suche",
   dunning: "Mahnwesen",
   "dunning-letter": "Mahnschreiben",
+  fibu: "FiBu",
 };
 
 function renderMobileTopbar() {
@@ -3515,7 +3544,7 @@ function renderMobileTopbar() {
 function iconLogout(){return `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 17l5-5-5-5M20 12H9M9 21H6a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h3" stroke-linecap="round" stroke-linejoin="round"/></svg>`;}
 
 function renderBottomNav() {
-  const isMore = ["products", "settings", "more", "orders", "order-detail", "order-new", "order-edit", "quotes", "quote-detail", "quote-new", "quote-edit", "stock", "stock-detail", "materials", "material-detail", "dunning", "dunning-letter", "search"].includes(VIEW.tab);
+  const isMore = ["products", "settings", "more", "orders", "order-detail", "order-new", "order-edit", "quotes", "quote-detail", "quote-new", "quote-edit", "stock", "stock-detail", "materials", "material-detail", "dunning", "dunning-letter", "search", "fibu"].includes(VIEW.tab);
   const items = [
     { tab: "dashboard", label: "Start", icon: iconChart() },
     { tab: "customers", label: "Kunden", icon: iconUsers() },
@@ -3559,6 +3588,11 @@ function renderMore() {
     <div class="more-item" data-nav="dunning">
       <div class="mi-icon">${iconBell()}</div>
       <div class="mi-text"><b>Mahnwesen</b><span>${DB.invoices.filter(isOverdue).length} überfällige Rechnungen</span></div>
+      <div class="mi-chevron">${iconChevronRight()}</div>
+    </div>
+    <div class="more-item" data-nav="fibu">
+      <div class="mi-icon">${iconEuro()}</div>
+      <div class="mi-text"><b>FiBu</b><span>Einnahmen, Ausgaben, Belege &amp; Auswertungen</span></div>
       <div class="mi-chevron">${iconChevronRight()}</div>
     </div>
     <div class="more-item" data-nav="quotes">
@@ -3607,6 +3641,7 @@ function renderSidebar() {
     { tab: "materials", label: "Material", icon: iconMaterial() },
     { tab: "invoices", label: "Rechnungen", icon: iconDoc() },
     { tab: "dunning", label: "Mahnwesen", icon: iconBell(), badge: DB.invoices.filter(isOverdue).length, also: ["dunning-letter"] },
+    { tab: "fibu", label: "FiBu", icon: iconEuro() },
     { tab: "settings", label: "Einstellungen", icon: iconGear() },
   ];
   return `
@@ -3663,6 +3698,7 @@ function renderMain() {
     case "search": return renderSearch();
     case "dunning": return renderDunning();
     case "dunning-letter": return renderDunningLetter(VIEW.id);
+    case "fibu": return renderFibu();
     default: return renderDashboard();
   }
 }
@@ -4866,6 +4902,7 @@ function renderInvoiceDetail(id) {
     </div>
   `) : ""}
 
+  ${renderInvoicePaidCard(inv)}
   ${renderInvoiceDunningCard(inv)}
 
   <div class="invoice-sheet" id="invoiceSheet" style="${letterheadSheetStyle()}">
@@ -5912,7 +5949,7 @@ function openDeleteOrderModal(id) {
    ============================================================ */
 
 function attachGlobalHandlers() {
-  try { attachGlobalHandlersBase(); } finally { attachExtraHandlers(); }
+  try { attachGlobalHandlersBase(); } finally { attachExtraHandlers(); attachFibuHandlers(); }
 }
 function attachGlobalHandlersBase() {
   document.querySelectorAll("[data-logout]").forEach(el => {
@@ -6065,7 +6102,13 @@ function attachGlobalHandlersBase() {
   const statusChanger = document.getElementById("statusChanger");
   if (statusChanger) statusChanger.onchange = async (e) => {
     const inv = invoiceById(e.target.dataset.invoiceId);
-    if (inv) { inv.status = e.target.value; await saveData(); render(); }
+    if (inv) {
+      const was = inv.status;
+      inv.status = e.target.value;
+      if (inv.status === "bezahlt" && was !== "bezahlt" && inv.type !== "lieferschein") inv.paidDate = todayISO();
+      if (inv.status !== "bezahlt") delete inv.paidDate;
+      await saveData(); render();
+    }
   };
   const orderStatusChanger = document.getElementById("orderStatusChanger");
   if (orderStatusChanger) orderStatusChanger.onchange = async (e) => {
@@ -6554,6 +6597,7 @@ function wireQuoteForm() {
 function runPostRenderHooks() {
   if (VIEW.tab === "dashboard") drawMonthChart();
   if (VIEW.tab === "settings") refreshAdminUsers();
+  if (VIEW.tab === "fibu" && (VIEW.fibuTab || "uebersicht") === "uebersicht") drawFibuChart();
   showRemoteBanner();
   applyDocumentTitle();
 }
@@ -6765,7 +6809,7 @@ function openConflictModal(result, mine, theirs, latest, who) {
 
 const COLL_LABELS = {
   customers: "Kunde", products: "Artikel", invoices: "Rechnung", orders: "Auftrag",
-  quotes: "Angebot", stockItems: "Lagerartikel", materials: "Material",
+  quotes: "Angebot", stockItems: "Lagerartikel", materials: "Material", fibu: "Buchung",
 };
 const FIELD_LABELS = {
   status: "Status", number: "Nr.", date: "Datum", dueDate: "Fällig am", items: "Positionen", customerId: "Kunde",
@@ -6773,13 +6817,14 @@ const FIELD_LABELS = {
   note: "Notiz", price: "Preis", stock: "Bestand", minStock: "Mindestbestand", movements: "Bewegungen",
   photo: "Foto", contacts: "Kontakte", dunning: "Mahnungen", paymentMethod: "Zahlart",
   nextSeq: "nächste Rechnungsnr.", orderNextSeq: "nächste Auftragsnr.", quoteNextSeq: "nächste Angebotsnr.",
-  company_: "Firmendaten", reminderSentAt: "Erinnerung", performanceDate: "Leistungsdatum",
+  company_: "Firmendaten", partner: "Partner", amount: "Betrag", category: "Kategorie", description: "Beschreibung", beleg: "Beleg", paidDate: "Bezahlt am", reminderSentAt: "Erinnerung", performanceDate: "Leistungsdatum",
 };
 
 function entityLabel(coll, e) {
   if (!e) return COLL_LABELS[coll] || coll;
   if (coll === "invoices") return (e.type === "lieferschein" ? "Lieferschein " : "Rechnung ") + (e.number || e.id);
   if (coll === "orders" || coll === "quotes") return COLL_LABELS[coll] + " " + (e.number || e.id);
+  if (coll === "fibu") return (e.kind === "einnahme" ? "Einnahme " : "Ausgabe ") + (e.number || e.id) + (e.partner ? " (" + e.partner + ")" : "");
   if (coll === "customers") return "Kunde " + (e.name || e.id) + (e.company ? " (" + e.company + ")" : "");
   return (COLL_LABELS[coll] || coll) + " " + (e.name || e.description || e.number || e.id);
 }
@@ -6873,6 +6918,8 @@ function fixDuplicateNumbers(db, base) {
   fix("invoices", /^(\d{4})(\d{3,})$/, (y, s) => `${y}${String(s).padStart(3, "0")}`, "nextSeq", "seqYear");
   fix("orders", /^A-(\d{4})-(\d+)$/, (y, s) => `A-${y}-${String(s).padStart(3, "0")}`, "orderNextSeq", "orderSeqYear");
   fix("quotes", /^AN-(\d{4})-(\d+)$/, (y, s) => `AN-${y}-${String(s).padStart(3, "0")}`, "quoteNextSeq", "quoteSeqYear");
+  fix("fibu", /^B-(\d{4})-(\d+)$/, (y, s) => `B-${y}-${String(s).padStart(3, "0")}`, "_fibuB", "_fibuY");
+  fix("fibu", /^E-(\d{4})-(\d+)$/, (y, s) => `E-${y}-${String(s).padStart(3, "0")}`, "_fibuE", "_fibuY");
   return notes;
 }
 
@@ -7193,6 +7240,12 @@ function globalSearchResults(q) {
     nav: ["stock-detail", s.id], title: s.name, sub: [s.storageLocation, `Bestand ${s.stock} ${s.unit || ""}`].filter(Boolean).join(" · "),
   })) });
 
+  const fb = (DB.fibu || []).filter(e => match([e.number, e.partner, e.description, fibuCatLabel(e.category), e.note, fmtCurrency(e.amount)].join(" ")))
+    .sort((a, b) => (b.date || "").localeCompare(a.date || ""));
+  if (fb.length) groups.push({ title: "FiBu-Buchungen", items: fb.map(e => ({
+    fibu: e.id, title: `${e.kind === "einnahme" ? "Einnahme" : "Ausgabe"} ${e.number} · ${e.partner}`, sub: `${e.description} · ${fmtDate(e.date)}`, right: fmtCurrency(e.amount),
+  })) });
+
   const mats = (DB.materials || []).filter(s => match([s.name, s.note, s.storageLocation, s.supplier].join(" ")));
   if (mats.length) groups.push({ title: "Material", items: mats.map(s => ({
     nav: ["material-detail", s.id], title: s.name, sub: [s.supplier, `Bestand ${s.stock} ${s.unit || ""}`].filter(Boolean).join(" · "),
@@ -7207,7 +7260,7 @@ function renderSearch() {
   const groups = globalSearchResults(q);
   const total = groups.reduce((s, g) => s + g.items.length, 0);
   return `
-  <div class="page-head"><div><h1>Suche</h1><div class="sub">Kunden, Rechnungen, Lieferscheine, Aufträge, Angebote, Artikel, Lager &amp; Material</div></div></div>
+  <div class="page-head"><div><h1>Suche</h1><div class="sub">Kunden, Rechnungen, Lieferscheine, Aufträge, Angebote, Artikel, Lager, Material &amp; FiBu</div></div></div>
   <div class="toolbar">
     <div class="search-box gs-box">${iconSearch()}<input type="search" id="globalSearchPage" placeholder="Suchbegriff, z. B. Name, Rechnungsnr., Ort, Artikel…" value="${esc(q)}" autocomplete="off"></div>
   </div>
@@ -7217,7 +7270,7 @@ function renderSearch() {
       <div class="card gs-group" style="padding:0;">
         <div class="gs-head">${esc(g.title)} <span>${g.items.length}</span></div>
         ${g.items.slice(0, VIEW.gsAll === g.title ? 500 : 15).map(it => `
-          <div class="gs-item" ${it.product ? `data-edit-product="${it.product}"` : `data-gs-nav="${it.nav[0]}" data-gs-id="${it.nav[1]}"`}>
+          <div class="gs-item" ${it.fibu ? `data-fibu-edit="${it.fibu}"` : it.product ? `data-edit-product="${it.product}"` : `data-gs-nav="${it.nav[0]}" data-gs-id="${it.nav[1]}"`}>
             <div class="gs-main"><b>${hlText(it.title, tokens)}</b><span>${hlText(it.sub, tokens)}</span></div>
             ${it.badge ? `<span class="gs-badge">${esc(it.badge)}</span>` : ""}
             ${it.right ? `<span class="mono gs-right">${esc(it.right)}</span>` : ""}
@@ -7699,6 +7752,7 @@ function attachExtraHandlers() {
     if (!inv) return;
     if (!confirm(`Rechnung ${inv.number} als bezahlt markieren?`)) return;
     inv.status = "bezahlt";
+    inv.paidDate = todayISO();
     await saveData();
     render();
   }));
@@ -7896,6 +7950,7 @@ function documentTitleForView() {
     if (inv && list[idx]) return `${safe(dunningLevelName(list[idx].level)).replace(/\s+/g, "_")}_Rechnung_${safe(inv.number)}`;
   }
   if (VIEW.tab === "quote-detail") { const q = quoteById(VIEW.id); if (q) return `Angebot_${safe(q.number)}`; }
+  if (VIEW.tab === "fibu" && VIEW.fibuTab === "euer") return `EUER_${safe(fibuPeriod().label).replace(/\s+/g, "_")}`;
   if (VIEW.tab === "order-detail") { const o = orderById(VIEW.id); if (o) return `Auftrag_${safe(o.number)}`; }
   return null;
 }
@@ -7903,6 +7958,595 @@ function applyDocumentTitle() {
   document.title = documentTitleForView() || "FreakyWood CRM";
 }
 window.addEventListener("beforeprint", applyDocumentTitle);
+
+/* ============================================================
+   FIBU – Einnahmen/Ausgaben, Belege, Auswertungen, Export
+   ------------------------------------------------------------
+   Daten: DB.fibu = [{ id, kind: "ausgabe"|"einnahme", number, date,
+     partner, description, category, amount, payment, note, orderId,
+     beleg: { id, name, mime, size } | null, createdBy }]
+   Einnahmen aus Rechnungen werden automatisch übernommen
+   (bezahlte Rechnungen, nach Zahlungsdatum).
+   ============================================================ */
+
+const FIBU_EXPENSE_CATS = [
+  { key: "material", label: "Material / Wareneinkauf" },
+  { key: "versand", label: "Verpackung & Versand" },
+  { key: "werkzeug", label: "Werkzeug & Kleingeräte" },
+  { key: "anschaffung", label: "Maschinen & Anschaffungen" },
+  { key: "werbung", label: "Werbung & Website" },
+  { key: "software", label: "Software & Abos" },
+  { key: "gebuehren", label: "Gebühren (Bank, Marktplätze)" },
+  { key: "sonstiges", label: "Sonstige Ausgaben" },
+];
+const FIBU_INCOME_CATS = [
+  { key: "barverkauf", label: "Verkauf ohne Rechnung (Markt/Bar)" },
+  { key: "sonstige_einnahme", label: "Sonstige Einnahmen" },
+];
+const FIBU_PAYMENTS = { ueberweisung: "Überweisung", karte: "Karte", bar: "Bar", paypal: "PayPal", lastschrift: "Lastschrift" };
+const GWG_LIMIT = 800;
+const KU_LIMIT_PREV = 25000;
+const KU_LIMIT_CUR = 100000;
+
+function fibuCatLabel(key) {
+  const c = FIBU_EXPENSE_CATS.concat(FIBU_INCOME_CATS).find(x => x.key === key);
+  return c ? c.label : (key || "—");
+}
+function fibuEntries() { return Array.isArray(DB.fibu) ? DB.fibu : []; }
+function fibuEntryById(id) { return fibuEntries().find(e => e.id === id); }
+
+// Zahlungsdatum einer Rechnung (Zufluss). Ältere Rechnungen ohne Angabe: Rechnungsdatum.
+function invoicePaidDate(inv) {
+  if (!inv || inv.type === "lieferschein" || inv.status !== "bezahlt") return null;
+  return inv.paidDate || inv.date;
+}
+
+function nextFibuNumber(kind, dateISO) {
+  const y = Number((dateISO || todayISO()).slice(0, 4));
+  const prefix = kind === "einnahme" ? "E" : "B";
+  let max = 0;
+  fibuEntries().forEach(e => {
+    const m = new RegExp(`^${prefix}-(\\d{4})-(\\d+)$`).exec(e.number || "");
+    if (m && Number(m[1]) === y) max = Math.max(max, Number(m[2]));
+  });
+  return `${prefix}-${y}-${String(max + 1).padStart(3, "0")}`;
+}
+
+/* ---------- Zeitraum ---------- */
+function fibuYears() {
+  const ys = new Set([String(new Date().getFullYear())]);
+  fibuEntries().forEach(e => e.date && ys.add(e.date.slice(0, 4)));
+  DB.invoices.forEach(i => { const d = invoicePaidDate(i); if (d) ys.add(d.slice(0, 4)); });
+  return Array.from(ys).sort().reverse();
+}
+function fibuPeriod() {
+  const year = VIEW.fibuYear || String(new Date().getFullYear());
+  const part = VIEW.fibuPart || "jahr"; // jahr | q1..q4 | m01..m12
+  let from = `${year}-01-01`, to = `${year}-12-31`, label = year;
+  if (/^q[1-4]$/.test(part)) {
+    const q = Number(part[1]);
+    const m1 = (q - 1) * 3 + 1, m3 = m1 + 2;
+    from = `${year}-${String(m1).padStart(2, "0")}-01`;
+    to = `${year}-${String(m3).padStart(2, "0")}-31`;
+    label = `Q${q} ${year}`;
+  } else if (/^m\d\d$/.test(part)) {
+    const m = part.slice(1);
+    from = `${year}-${m}-01`; to = `${year}-${m}-31`;
+    label = new Date(`${year}-${m}-15`).toLocaleDateString("de-DE", { month: "long", year: "numeric" });
+  }
+  return { year, part, from, to, label };
+}
+function inPeriod(d, p) { return !!d && d >= p.from && d <= p.to; }
+
+/* ---------- Journal: alle Buchungen eines Zeitraums ---------- */
+function fibuJournal(p) {
+  const rows = [];
+  DB.invoices.forEach(i => {
+    const d = invoicePaidDate(i);
+    if (!inPeriod(d, p)) return;
+    rows.push({ src: "rechnung", id: i.id, kind: "einnahme", date: d, number: `RE ${i.number}`,
+      partner: customerName(customerById(i.customerId)), description: (i.items || []).map(it => it.description).join(", "),
+      category: "rechnungen", catLabel: "Erlöse aus Rechnungen", amount: invoiceTotal(i),
+      payment: i.paymentMethod === "bar" ? "bar" : "ueberweisung", beleg: null, hasDoc: true });
+  });
+  fibuEntries().forEach(e => {
+    if (!inPeriod(e.date, p)) return;
+    rows.push({ src: "fibu", id: e.id, kind: e.kind, date: e.date, number: e.number, partner: e.partner,
+      description: e.description, category: e.category, catLabel: fibuCatLabel(e.category),
+      amount: Number(e.amount) || 0, payment: e.payment, beleg: e.beleg || null, hasDoc: !!e.beleg });
+  });
+  rows.sort((a, b) => a.date.localeCompare(b.date) || String(a.number).localeCompare(String(b.number)));
+  return rows;
+}
+
+function sumBy(rows, f) { return rows.reduce((s, r) => s + (f ? f(r) : r.amount), 0); }
+
+/* ============================================================
+   Ansicht
+   ============================================================ */
+function renderFibu() {
+  const sub = VIEW.fibuTab || "uebersicht";
+  const p = fibuPeriod();
+  const years = fibuYears();
+  const months = ["Jan", "Feb", "Mär", "Apr", "Mai", "Jun", "Jul", "Aug", "Sep", "Okt", "Nov", "Dez"];
+  return `
+  <div class="page-head">
+    <div><h1>FiBu</h1><div class="sub">Einnahmen, Ausgaben &amp; Belege · ${esc(p.label)}</div></div>
+    <div class="head-actions">
+      <button class="btn" data-fibu-new="einnahme">${iconPlus()} Einnahme</button>
+      <button class="btn btn-primary" data-fibu-new="ausgabe">${iconPlus()} Ausgabe</button>
+    </div>
+  </div>
+  <div class="toolbar fibu-toolbar no-print">
+    <div class="seg">
+      ${[["uebersicht", "Auswertung"], ["buchungen", "Buchungen"], ["euer", "EÜR-Übersicht"], ["export", "Export"]].map(([k, l]) =>
+        `<button class="seg-btn ${sub === k ? "active" : ""}" data-fibu-tab="${k}">${l}</button>`).join("")}
+    </div>
+    <select class="filter-select" id="fibuYear">${years.map(y => `<option ${y === p.year ? "selected" : ""}>${y}</option>`).join("")}</select>
+    <select class="filter-select" id="fibuPart">
+      <option value="jahr" ${p.part === "jahr" ? "selected" : ""}>Ganzes Jahr</option>
+      ${[1, 2, 3, 4].map(q => `<option value="q${q}" ${p.part === "q" + q ? "selected" : ""}>Q${q}</option>`).join("")}
+      ${months.map((m, i) => `<option value="m${String(i + 1).padStart(2, "0")}" ${p.part === "m" + String(i + 1).padStart(2, "0") ? "selected" : ""}>${m}</option>`).join("")}
+    </select>
+  </div>
+  ${sub === "buchungen" ? renderFibuList(p) : sub === "euer" ? renderFibuEuer(p) : sub === "export" ? renderFibuExport(p) : renderFibuOverview(p)}
+  `;
+}
+
+function fibuBar(label, value, max, extra) {
+  const pct = max > 0 ? Math.max(1, Math.round(value / max * 100)) : 0;
+  return `<div class="fb-row"><div class="fb-label">${esc(label)}</div><div class="fb-track"><div class="fb-fill" style="width:${pct}%"></div></div><div class="fb-val mono">${fmtCurrency(value)}${extra ? `<span>${extra}</span>` : ""}</div></div>`;
+}
+
+function renderFibuOverview(p) {
+  const rows = fibuJournal(p);
+  const inc = rows.filter(r => r.kind === "einnahme"), exp = rows.filter(r => r.kind === "ausgabe");
+  const sInc = sumBy(inc), sExp = sumBy(exp), profit = sInc - sExp;
+  const noBeleg = exp.filter(r => !r.beleg);
+  const gwg = exp.filter(r => r.category === "anschaffung" && r.amount > GWG_LIMIT);
+  const open = DB.invoices.filter(i => (i.type || "rechnung") === "rechnung" && i.status === "offen");
+  const sOpen = open.reduce((s, i) => s + invoiceTotal(i), 0);
+
+  // Kleinunternehmer-Grenze (immer ganzes Jahr)
+  const y = Number(p.year);
+  const yearInc = (yy) => sumBy(fibuJournal({ from: `${yy}-01-01`, to: `${yy}-12-31` }).filter(r => r.kind === "einnahme"));
+  const prevInc = yearInc(y - 1), curInc = yearInc(y);
+  const kuOn = !!(DB.settings.company && DB.settings.company.kleinunternehmer);
+
+  // Kategorien
+  const byCat = {};
+  exp.forEach(r => { byCat[r.catLabel] = (byCat[r.catLabel] || 0) + r.amount; });
+  const cats = Object.entries(byCat).sort((a, b) => b[1] - a[1]);
+  const maxCat = cats.length ? cats[0][1] : 0;
+  // Top Kunden / Lieferanten
+  const top = (list) => { const m = {}; list.forEach(r => { const k = r.partner || "—"; m[k] = (m[k] || 0) + r.amount; }); return Object.entries(m).sort((a, b) => b[1] - a[1]).slice(0, 6); };
+  const topC = top(inc), topS = top(exp);
+
+  return `
+  <div class="kpi-row">
+    <div class="kpi-card"><div class="label">Einnahmen</div><div class="value mono">${fmtCurrency(sInc)}</div><div class="delta">${inc.length} Buchungen</div></div>
+    <div class="kpi-card"><div class="label">Ausgaben</div><div class="value mono">${fmtCurrency(sExp)}</div><div class="delta">${exp.length} Buchungen</div></div>
+    <div class="kpi-card"><div class="label">Gewinn (Überschuss)</div><div class="value mono" style="color:${profit < 0 ? "var(--rust)" : "var(--sage)"}">${fmtCurrency(profit)}</div><div class="delta">${sInc > 0 ? Math.round(profit / sInc * 100) + " % vom Umsatz" : "—"}</div></div>
+    <div class="kpi-card kpi-clickable" data-nav="invoices" data-invoice-status-filter="offen"><div class="label">Offene Forderungen</div><div class="value mono">${fmtCurrency(sOpen)}</div><div class="delta">${open.length} Rechnungen (heute)</div></div>
+  </div>
+
+  ${(noBeleg.length || gwg.length) ? `
+  <div class="card fibu-hints">
+    ${noBeleg.length ? `<div>${iconAlert()} <b>${noBeleg.length} Ausgabe${noBeleg.length > 1 ? "n" : ""} ohne Beleg</b> (${fmtCurrency(sumBy(noBeleg))}) – <a href="#" data-fibu-tab="buchungen" data-fibu-filter="ohnebeleg">anzeigen</a></div>` : ""}
+    ${gwg.length ? `<div>${iconAlert()} <b>${gwg.length} Anschaffung${gwg.length > 1 ? "en" : ""} über ${GWG_LIMIT} €</b> – wird ggf. über mehrere Jahre abgeschrieben, bitte mit dem Steuerberater klären.</div>` : ""}
+  </div>` : ""}
+
+  <div class="card">
+    <h2>Einnahmen &amp; Ausgaben ${esc(p.year)}</h2>
+    <div style="position:relative;height:260px;"><canvas id="fibuChart"></canvas></div>
+  </div>
+
+  <div class="fb-grid">
+    <div class="card">
+      <h2>Ausgaben nach Kategorie</h2>
+      ${cats.length ? cats.map(([l, v]) => fibuBar(l, v, maxCat, sExp ? Math.round(v / sExp * 100) + " %" : "")).join("") : `<p class="fb-empty">Noch keine Ausgaben im Zeitraum.</p>`}
+    </div>
+    <div class="card">
+      <h2>Kleinunternehmer-Grenze</h2>
+      ${kuOn ? `
+        ${fibuBar(`Umsatz ${y - 1}`, prevInc, Math.max(prevInc, KU_LIMIT_PREV), `von ${fmtCurrency(KU_LIMIT_PREV)}`)}
+        ${fibuBar(`Umsatz ${y} bisher`, curInc, Math.max(curInc, KU_LIMIT_CUR), `von ${fmtCurrency(KU_LIMIT_CUR)}`)}
+        <p class="fb-note">${prevInc > KU_LIMIT_PREV ? `<b style="color:var(--rust)">Vorjahresumsatz über ${fmtCurrency(KU_LIMIT_PREV)} – bitte mit dem Steuerberater sprechen.</b>` :
+          curInc > KU_LIMIT_PREV * 0.8 ? `<b>Hinweis:</b> Der Umsatz ${y} liegt bei ${Math.round(curInc / KU_LIMIT_PREV * 100)} % der ${fmtCurrency(KU_LIMIT_PREV)}-Grenze, die für ${y + 1} zählt.` :
+          `Alles im grünen Bereich.`} Orientierungswert auf Basis der erfassten Einnahmen – maßgeblich ist die Prüfung durch den Steuerberater.</p>
+      ` : `<p class="fb-note">Kleinunternehmerregelung ist in den Einstellungen nicht aktiviert.</p>`}
+    </div>
+  </div>
+
+  <div class="fb-grid">
+    <div class="card"><h2>Top-Kunden (Einnahmen)</h2>${topC.length ? topC.map(([l, v]) => fibuBar(l, v, topC[0][1])).join("") : `<p class="fb-empty">Keine Einnahmen im Zeitraum.</p>`}</div>
+    <div class="card"><h2>Top-Lieferanten (Ausgaben)</h2>${topS.length ? topS.map(([l, v]) => fibuBar(l, v, topS[0][1])).join("") : `<p class="fb-empty">Keine Ausgaben im Zeitraum.</p>`}</div>
+  </div>`;
+}
+
+function drawFibuChart() {
+  const el = document.getElementById("fibuChart");
+  if (!el || typeof Chart === "undefined") return;
+  const p = fibuPeriod();
+  const inc = Array(12).fill(0), exp = Array(12).fill(0);
+  fibuJournal({ from: `${p.year}-01-01`, to: `${p.year}-12-31` }).forEach(r => {
+    const m = Number(r.date.slice(5, 7)) - 1;
+    if (r.kind === "einnahme") inc[m] += r.amount; else exp[m] += r.amount;
+  });
+  const profit = inc.map((v, i) => v - exp[i]);
+  if (drawFibuChart._c) { try { drawFibuChart._c.destroy(); } catch (e) {} }
+  drawFibuChart._c = new Chart(el, {
+    data: {
+      labels: ["Jan", "Feb", "Mär", "Apr", "Mai", "Jun", "Jul", "Aug", "Sep", "Okt", "Nov", "Dez"],
+      datasets: [
+        { type: "bar", label: "Einnahmen", data: inc, backgroundColor: "#2E7D4F", borderRadius: 4 },
+        { type: "bar", label: "Ausgaben", data: exp, backgroundColor: "#C0392B", borderRadius: 4 },
+        { type: "line", label: "Gewinn", data: profit, borderColor: "#141414", backgroundColor: "#141414", tension: 0, pointRadius: 3 },
+      ],
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { position: "bottom", labels: { boxWidth: 12 } },
+        tooltip: { callbacks: { label: c => `${c.dataset.label}: ${fmtCurrency(c.parsed.y)}` } } },
+      scales: { y: { ticks: { callback: v => v.toLocaleString("de-DE") + " €" } }, x: { grid: { display: false } } },
+    },
+  });
+}
+
+function renderFibuList(p) {
+  const filter = VIEW.fibuFilter || "alle";
+  const q = normSearch(VIEW.fibuQ || "");
+  let rows = fibuJournal(p);
+  if (filter === "ausgaben") rows = rows.filter(r => r.kind === "ausgabe");
+  if (filter === "einnahmen") rows = rows.filter(r => r.kind === "einnahme");
+  if (filter === "ohnebeleg") rows = rows.filter(r => r.kind === "ausgabe" && !r.beleg);
+  if (q) rows = rows.filter(r => normSearch([r.number, r.partner, r.description, r.catLabel, fmtCurrency(r.amount)].join(" ")).includes(q));
+  rows = rows.slice().reverse();
+  const sInc = sumBy(rows.filter(r => r.kind === "einnahme")), sExp = sumBy(rows.filter(r => r.kind === "ausgabe"));
+  return `
+  <div class="toolbar">
+    <div class="search-box">${iconSearch()}<input type="text" id="fibuSearch" placeholder="Lieferant, Beschreibung, Belegnr. …" value="${esc(VIEW.fibuQ || "")}"></div>
+    <select class="filter-select" id="fibuFilter">
+      <option value="alle" ${filter === "alle" ? "selected" : ""}>Alle Buchungen</option>
+      <option value="ausgaben" ${filter === "ausgaben" ? "selected" : ""}>Nur Ausgaben</option>
+      <option value="einnahmen" ${filter === "einnahmen" ? "selected" : ""}>Nur Einnahmen</option>
+      <option value="ohnebeleg" ${filter === "ohnebeleg" ? "selected" : ""}>Ausgaben ohne Beleg</option>
+    </select>
+  </div>
+  <div class="card" style="padding:0;">
+    <table>
+      <thead><tr><th>Datum</th><th>Beleg-Nr.</th><th>Partner / Beschreibung</th><th>Kategorie</th><th class="num">Betrag</th><th></th></tr></thead>
+      <tbody>
+        ${rows.length ? rows.map(r => `
+          <tr class="clickable" ${r.src === "rechnung" ? `data-goto-invoice="${r.id}"` : `data-fibu-edit="${r.id}"`}>
+            <td>${fmtDate(r.date)}</td>
+            <td class="mono" data-label="Beleg-Nr.">${esc(r.number)}</td>
+            <td data-label="Partner"><b>${esc(r.partner || "—")}</b><div class="fb-desc">${esc(r.description || "")}</div></td>
+            <td data-label="Kategorie">${esc(r.catLabel)}</td>
+            <td class="num" data-label="Betrag" style="color:${r.kind === "einnahme" ? "var(--sage)" : "var(--ink)"}">${r.kind === "einnahme" ? "+" : "−"}${fmtCurrency(r.amount)}</td>
+            <td style="white-space:nowrap;text-align:right;">
+              ${r.beleg ? `<button class="btn btn-sm btn-ghost" data-beleg-view="${r.id}" title="Beleg ansehen">📎</button>` :
+                r.src === "fibu" && r.kind === "ausgabe" ? `<span class="fb-missing" title="Beleg fehlt">kein Beleg</span>` : ""}
+            </td>
+          </tr>`).join("") : `<tr class="empty-row"><td colspan="6">Keine Buchungen im Zeitraum</td></tr>`}
+      </tbody>
+      ${rows.length ? `<tfoot><tr><td colspan="4" style="text-align:right;font-weight:600;">Summe Einnahmen / Ausgaben</td><td class="num" colspan="2" style="font-weight:600;">+${fmtCurrency(sInc)} / −${fmtCurrency(sExp)}</td></tr></tfoot>` : ""}
+    </table>
+  </div>
+  <p class="fb-note">Einnahmen aus Rechnungen werden automatisch übernommen, sobald eine Rechnung als bezahlt markiert ist (Datum = Zahlungseingang).</p>`;
+}
+
+function renderFibuEuer(p) {
+  const rows = fibuJournal(p);
+  const inc = rows.filter(r => r.kind === "einnahme"), exp = rows.filter(r => r.kind === "ausgabe");
+  const incRech = sumBy(inc.filter(r => r.src === "rechnung"));
+  const incOther = FIBU_INCOME_CATS.map(c => [c.label, sumBy(inc.filter(r => r.category === c.key))]).filter(x => x[1]);
+  const expCats = FIBU_EXPENSE_CATS.map(c => [c.label, sumBy(exp.filter(r => r.category === c.key))]);
+  const sInc = sumBy(inc), sExp = sumBy(exp);
+  const comp = DB.settings.company;
+  return `
+  <div class="head-actions no-print" style="justify-content:flex-end;margin-bottom:12px;"><button class="btn" id="btnPrintEuer">${iconPrint()} Drucken / PDF</button></div>
+  <div class="card euer-sheet">
+    <div class="euer-head"><div><h2 style="margin:0;">Einnahmen-Überschuss-Übersicht</h2><div class="fb-desc">${esc(comp.name)} · Zeitraum ${fmtDate(p.from)} – ${fmtDate(p.to)}</div></div><div class="fb-desc">Stand ${fmtDate(todayISO())}</div></div>
+    <table class="euer-table">
+      <tbody>
+        <tr class="euer-sec"><td colspan="2">Betriebseinnahmen</td></tr>
+        <tr><td>Erlöse aus Rechnungen (bezahlt)</td><td class="num">${fmtCurrency(incRech)}</td></tr>
+        ${incOther.map(([l, v]) => `<tr><td>${esc(l)}</td><td class="num">${fmtCurrency(v)}</td></tr>`).join("")}
+        <tr class="euer-sum"><td>Summe Betriebseinnahmen</td><td class="num">${fmtCurrency(sInc)}</td></tr>
+        <tr class="euer-sec"><td colspan="2">Betriebsausgaben</td></tr>
+        ${expCats.map(([l, v]) => `<tr><td>${esc(l)}</td><td class="num">${fmtCurrency(v)}</td></tr>`).join("")}
+        <tr class="euer-sum"><td>Summe Betriebsausgaben</td><td class="num">${fmtCurrency(sExp)}</td></tr>
+        <tr class="euer-total"><td>${sInc - sExp >= 0 ? "Überschuss (Gewinn)" : "Verlust"}</td><td class="num">${fmtCurrency(sInc - sExp)}</td></tr>
+      </tbody>
+    </table>
+    <p class="fb-note">${comp.kleinunternehmer ? "Kleinunternehmer nach §19 UStG – alle Beträge brutto, keine Umsatzsteuer/Vorsteuer. " : ""}Vereinfachte Übersicht nach dem Zufluss-/Abflussprinzip auf Basis der erfassten Daten. Ersetzt nicht die Anlage EÜR; Abschreibungen (AfA) für Anschaffungen über ${GWG_LIMIT} € sind nicht berücksichtigt.</p>
+  </div>`;
+}
+
+function renderFibuExport(p) {
+  const rows = fibuJournal(p);
+  const withBeleg = rows.filter(r => r.beleg).length;
+  return `
+  <div class="card">
+    <h2>Export für den Steuerberater · ${esc(p.label)}</h2>
+    <p style="font-size:13px;color:var(--ink-soft);margin:0 0 14px;">${rows.length} Buchungen im Zeitraum, davon ${withBeleg} mit hinterlegtem Beleg.</p>
+    <div class="head-actions" style="justify-content:flex-start;flex-wrap:wrap;">
+      <button class="btn btn-primary" id="btnFibuCsv">Buchungsliste (Excel/CSV)</button>
+      <button class="btn" id="btnFibuZip" ${withBeleg ? "" : "disabled"}>Alle Belege als ZIP</button>
+      <button class="btn" data-fibu-tab="euer">EÜR-Übersicht drucken</button>
+    </div>
+    <div id="fibuExportStatus" class="fb-note"></div>
+  </div>
+  <div class="card">
+    <h3 style="margin-bottom:6px;">Was steckt drin?</h3>
+    <p class="fb-note" style="margin:0;">Die Buchungsliste enthält alle Einnahmen (bezahlte Rechnungen + sonstige Einnahmen) und Ausgaben mit Datum, Belegnummer, Partner, Beschreibung, Kategorie, Betrag, Zahlart und dem Dateinamen des Belegs. Die ZIP-Datei enthält die Belege, benannt nach Belegnummer, z.&nbsp;B. <span class="mono">B-2027-014_Holzhandel.pdf</span>. Rechnungen selbst bitte wie gewohnt als PDF aus der App speichern.</p>
+  </div>`;
+}
+
+/* ============================================================
+   Erfassen / Bearbeiten
+   ============================================================ */
+let FIBU_PENDING_BELEG = null; // { id, name, mime, size } nach Upload im Formular
+
+function openFibuModal(kind, editId) {
+  const e = editId ? fibuEntryById(editId) : null;
+  kind = e ? e.kind : kind;
+  const cats = kind === "einnahme" ? FIBU_INCOME_CATS : FIBU_EXPENSE_CATS;
+  const partners = Array.from(new Set(fibuEntries().filter(x => x.kind === kind).map(x => x.partner).filter(Boolean))).sort();
+  FIBU_PENDING_BELEG = e && e.beleg ? Object.assign({}, e.beleg) : null;
+  const lastCat = !e && VIEW.fibuLastCat && cats.some(c => c.key === VIEW.fibuLastCat) ? VIEW.fibuLastCat : null;
+  openModal(`
+    <h2>${e ? `${kind === "einnahme" ? "Einnahme" : "Ausgabe"} ${esc(e.number)}` : kind === "einnahme" ? "Neue Einnahme (ohne Rechnung)" : "Neue Ausgabe"}</h2>
+    <form id="fibuForm">
+      <div class="form-grid">
+        <div class="field"><label>${kind === "einnahme" ? "Eingegangen am" : "Bezahlt am"}</label><input type="date" id="fb_date" value="${esc(e ? e.date : todayISO())}" required></div>
+        <div class="field"><label>Betrag (€, brutto)</label><input type="number" id="fb_amount" step="0.01" min="0" value="${e ? Number(e.amount) : ""}" required placeholder="0,00"></div>
+        <div class="field"><label>${kind === "einnahme" ? "Von (Kunde/Quelle)" : "Lieferant"}</label><input type="text" id="fb_partner" list="fbPartners" value="${esc(e ? e.partner : "")}" required>
+          <datalist id="fbPartners">${partners.map(x => `<option value="${esc(x)}">`).join("")}</datalist></div>
+        <div class="field"><label>Kategorie</label><select id="fb_cat">${cats.map(c => `<option value="${c.key}" ${(e ? e.category === c.key : lastCat === c.key) ? "selected" : ""}>${esc(c.label)}</option>`).join("")}</select></div>
+        <div class="field" style="grid-column:1/-1;"><label>Beschreibung</label><input type="text" id="fb_desc" value="${esc(e ? e.description : "")}" placeholder="${kind === "einnahme" ? "z. B. Weihnachtsmarkt Braunlage" : "z. B. Ahornholz 20 Platten"}" required></div>
+        <div class="field"><label>Zahlart</label><select id="fb_pay">${Object.entries(FIBU_PAYMENTS).map(([k, l]) => `<option value="${k}" ${(e ? e.payment : "ueberweisung") === k ? "selected" : ""}>${l}</option>`).join("")}</select></div>
+        <div class="field"><label>Auftrag (optional)</label><select id="fb_order"><option value="">—</option>${(DB.orders || []).slice().sort((a, b) => b.number.localeCompare(a.number)).slice(0, 80).map(o => `<option value="${o.id}" ${e && e.orderId === o.id ? "selected" : ""}>${esc(o.number)} · ${esc(customerName(customerById(o.customerId)))}</option>`).join("")}</select></div>
+        <div class="field" style="grid-column:1/-1;"><label>Notiz</label><input type="text" id="fb_note" value="${esc(e ? e.note || "" : "")}"></div>
+      </div>
+      <div class="field">
+        <label>Beleg (Foto oder PDF)</label>
+        <div class="fb-beleg-box" id="fbBelegBox">${renderBelegBox()}</div>
+        <input type="file" id="fb_file" accept="image/*,application/pdf" style="display:none;">
+      </div>
+      <div id="fbGwgHint" class="hint" style="color:var(--rust);"></div>
+      <div id="fibuFormError" class="lock-error" style="text-align:left;"></div>
+      <div class="modal-actions" style="flex-wrap:wrap;">
+        ${e && isAdmin() ? `<button type="button" class="btn btn-danger" id="btnFibuDelete" style="margin-right:auto;">${iconTrash()} Löschen</button>` : ""}
+        <button type="button" class="btn" id="btnCancelModal">Abbrechen</button>
+        ${!e ? `<button type="button" class="btn" id="btnFibuSaveNext">Speichern &amp; nächste</button>` : ""}
+        <button type="submit" class="btn btn-primary">Speichern</button>
+      </div>
+    </form>
+  `);
+  wireFibuModal(kind, e);
+}
+
+function renderBelegBox() {
+  const b = FIBU_PENDING_BELEG;
+  if (b && b.uploading) return `<span class="fb-desc">Lade hoch… ${esc(b.name || "")}</span>`;
+  if (b && b.id) return `<span>📎 <b>${esc(b.name)}</b> <span class="fb-desc">${fmtBytes(b.size)}</span></span>
+    <span><button type="button" class="btn btn-sm" id="btnBelegShow">Ansehen</button> <button type="button" class="btn btn-sm" id="btnBelegPick">Ersetzen</button></span>`;
+  return `<span class="fb-desc">Noch kein Beleg</span><button type="button" class="btn btn-sm" id="btnBelegPick">📷 Foto / PDF wählen</button>`;
+}
+
+function wireFibuModal(kind, e) {
+  const box = document.getElementById("fbBelegBox");
+  const file = document.getElementById("fb_file");
+  const rewire = () => {
+    box.innerHTML = renderBelegBox();
+    const pick = document.getElementById("btnBelegPick"); if (pick) pick.onclick = () => file.click();
+    const show = document.getElementById("btnBelegShow"); if (show) show.onclick = () => openBelegViewer(FIBU_PENDING_BELEG);
+  };
+  rewire();
+  file.onchange = async () => {
+    const f = file.files && file.files[0];
+    if (!f) return;
+    try {
+      FIBU_PENDING_BELEG = { uploading: true, name: f.name };
+      rewire();
+      const up = await uploadBeleg(f);
+      FIBU_PENDING_BELEG = up;
+    } catch (err) {
+      FIBU_PENDING_BELEG = null;
+      document.getElementById("fibuFormError").textContent = "Beleg konnte nicht hochgeladen werden: " + (err.message || err);
+    }
+    file.value = "";
+    rewire();
+  };
+  const amount = document.getElementById("fb_amount"), cat = document.getElementById("fb_cat");
+  const gwg = () => {
+    document.getElementById("fbGwgHint").textContent = (kind === "ausgabe" && Number(amount.value) > GWG_LIMIT && cat.value === "anschaffung")
+      ? `Über ${GWG_LIMIT} €: wird voraussichtlich über mehrere Jahre abgeschrieben – Beleg unbedingt aufheben und dem Steuerberater melden.` : "";
+  };
+  amount.oninput = gwg; cat.onchange = gwg; gwg();
+  document.getElementById("btnCancelModal").onclick = closeModal;
+
+  const collect = () => {
+    const v = {
+      date: document.getElementById("fb_date").value,
+      amount: Math.round((Number(String(amount.value).replace(",", ".")) || 0) * 100) / 100,
+      partner: document.getElementById("fb_partner").value.trim(),
+      category: cat.value,
+      description: document.getElementById("fb_desc").value.trim(),
+      payment: document.getElementById("fb_pay").value,
+      orderId: document.getElementById("fb_order").value || null,
+      note: document.getElementById("fb_note").value.trim(),
+    };
+    if (!v.date || !v.partner || !v.description || !(v.amount > 0)) return { err: "Bitte Datum, Betrag, Partner und Beschreibung ausfüllen." };
+    if (FIBU_PENDING_BELEG && FIBU_PENDING_BELEG.uploading) return { err: "Bitte warten, bis der Beleg hochgeladen ist." };
+    return { v };
+  };
+  const save = async (andNext) => {
+    const r = collect();
+    if (r.err) { document.getElementById("fibuFormError").textContent = r.err; return; }
+    if (!Array.isArray(DB.fibu)) DB.fibu = [];
+    const beleg = FIBU_PENDING_BELEG && FIBU_PENDING_BELEG.id ? { id: FIBU_PENDING_BELEG.id, name: FIBU_PENDING_BELEG.name, mime: FIBU_PENDING_BELEG.mime, size: FIBU_PENDING_BELEG.size } : null;
+    if (e) {
+      const yearChanged = e.date.slice(0, 4) !== r.v.date.slice(0, 4);
+      Object.assign(e, r.v, { beleg });
+      if (yearChanged) e.number = nextFibuNumber(e.kind, e.date);
+    } else {
+      DB.fibu.push(Object.assign({ id: uid("fb"), kind, number: nextFibuNumber(kind, r.v.date), beleg, createdBy: CURRENT_USER ? CURRENT_USER.name : "" }, r.v));
+      VIEW.fibuLastCat = r.v.category;
+    }
+    await saveData();
+    closeModal();
+    render();
+    if (andNext) openFibuModal(kind, null);
+  };
+  document.getElementById("fibuForm").onsubmit = (ev) => { ev.preventDefault(); save(false); };
+  const nxt = document.getElementById("btnFibuSaveNext"); if (nxt) nxt.onclick = () => save(true);
+  const del = document.getElementById("btnFibuDelete");
+  if (del) del.onclick = async () => {
+    if (!isAdmin() || !confirm(`${e.number} wirklich löschen? Der Beleg bleibt im Archiv erhalten, die Löschung wird protokolliert.`)) return;
+    DB.fibu = DB.fibu.filter(x => x.id !== e.id);
+    await saveData();
+    closeModal();
+    render();
+  };
+}
+
+/* ---------- Belege hochladen / ansehen ---------- */
+function fileToBase64(f) {
+  return new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(String(r.result).split(",")[1] || ""); r.onerror = () => rej(r.error); r.readAsDataURL(f); });
+}
+async function uploadBeleg(f) {
+  let mime = f.type, data, name = f.name || "beleg";
+  if (mime === "application/pdf") {
+    if (f.size > 8 * 1024 * 1024) throw new Error("PDF größer als 8 MB");
+    data = await fileToBase64(f);
+  } else if (/^image\//.test(mime)) {
+    const url = await readImageAsCompressedDataUrl(f, 2000, 0.82);   // lesbar, aber klein
+    data = url.split(",")[1]; mime = "image/jpeg"; name = name.replace(/\.(heic|heif|png|webp|jpe?g)$/i, "") + ".jpg";
+  } else throw new Error("Nur Fotos oder PDF-Dateien");
+  const res = await rpc("crm_beleg_upload", { p_token: SESSION_TOKEN, p_filename: name, p_mime: mime, p_data: data });
+  return { id: res.id, name, mime, size: res.size };
+}
+async function fetchBelegBlob(b) {
+  const r = await rpc("crm_beleg_get", { p_token: SESSION_TOKEN, p_id: b.id });
+  const bin = atob(String(r.data).replace(/\s+/g, ""));
+  const bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  return { blob: new Blob([bytes], { type: r.mime }), name: r.filename, mime: r.mime };
+}
+async function openBelegViewer(b) {
+  if (!b || !b.id) return;
+  const wrap = document.createElement("div");
+  wrap.className = "modal-overlay beleg-viewer";
+  wrap.innerHTML = `<div class="modal" style="max-width:900px;width:calc(100% - 32px);"><h2>Beleg · ${esc(b.name || "")}</h2><div id="bvBody" style="min-height:120px;">Lade…</div>
+    <div class="modal-actions"><a class="btn" id="bvDownload" download>Herunterladen</a><button class="btn btn-primary" id="bvClose">Schließen</button></div></div>`;
+  document.body.appendChild(wrap);
+  const close = () => { wrap.remove(); if (wrap._url) URL.revokeObjectURL(wrap._url); };
+  wrap.querySelector("#bvClose").onclick = close;
+  wrap.addEventListener("click", ev => { if (ev.target === wrap) close(); });
+  try {
+    const f = await fetchBelegBlob(b);
+    const url = URL.createObjectURL(f.blob); wrap._url = url;
+    wrap.querySelector("#bvBody").innerHTML = f.mime === "application/pdf"
+      ? `<iframe src="${url}" style="width:100%;height:70vh;border:1px solid var(--line);border-radius:8px;"></iframe>`
+      : `<img src="${url}" style="max-width:100%;max-height:70vh;display:block;margin:0 auto;border-radius:8px;">`;
+    const a = wrap.querySelector("#bvDownload"); a.href = url; a.download = f.name;
+  } catch (e) { wrap.querySelector("#bvBody").textContent = "Beleg konnte nicht geladen werden: " + e.message; }
+}
+
+/* ---------- Export ---------- */
+function csvCell(v) { const s = String(v == null ? "" : v); return /[";\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s; }
+function fileSafe(s) { return String(s || "").replace(/ä/g, "ae").replace(/ö/g, "oe").replace(/ü/g, "ue").replace(/Ä/g, "Ae").replace(/Ö/g, "Oe").replace(/Ü/g, "Ue").normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/ß/g, "ss").replace(/[^A-Za-z0-9._-]+/g, "_").replace(/_+/g, "_").slice(0, 40).replace(/^_|_$/g, ""); }
+function belegExportName(r) { const ext = r.beleg.mime === "application/pdf" ? "pdf" : "jpg"; return `${fileSafe(r.number)}_${fileSafe(r.partner)}.${ext}`; }
+
+function exportFibuCsv() {
+  const p = fibuPeriod();
+  const rows = fibuJournal(p);
+  const head = ["Datum", "Belegnummer", "Art", "Partner", "Beschreibung", "Kategorie", "Betrag (EUR)", "Zahlart", "Beleg-Datei"];
+  const lines = [head.join(";")].concat(rows.map(r => [
+    fmtDate(r.date), r.number, r.kind === "einnahme" ? "Einnahme" : "Ausgabe", r.partner, r.description, r.catLabel,
+    (r.kind === "einnahme" ? 1 : -1) * r.amount, FIBU_PAYMENTS[r.payment] || r.payment || "",
+    r.beleg ? belegExportName(r) : (r.src === "rechnung" ? `Rechnung ${r.number.replace(/^RE /, "")} (PDF aus der App)` : ""),
+  ].map((v, i) => i === 6 ? Number(v).toFixed(2).replace(".", ",") : csvCell(v)).join(";")));
+  const sInc = sumBy(rows.filter(r => r.kind === "einnahme")), sExp = sumBy(rows.filter(r => r.kind === "ausgabe"));
+  lines.push("", `;;;;;Summe Einnahmen;${sInc.toFixed(2).replace(".", ",")}`, `;;;;;Summe Ausgaben;${(-sExp).toFixed(2).replace(".", ",")}`, `;;;;;Überschuss;${(sInc - sExp).toFixed(2).replace(".", ",")}`);
+  const blob = new Blob(["﻿" + lines.join("\r\n")], { type: "text/csv;charset=utf-8" });
+  const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = `FiBu_${fileSafe(p.label)}_Buchungen.csv`;
+  document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 500);
+}
+
+function loadScriptOnce(src) {
+  return new Promise((res, rej) => {
+    if (document.querySelector(`script[src="${src}"]`)) return res();
+    const s = document.createElement("script"); s.src = src; s.onload = res; s.onerror = () => rej(new Error("Bibliothek konnte nicht geladen werden"));
+    document.head.appendChild(s);
+  });
+}
+async function exportFibuZip() {
+  const p = fibuPeriod();
+  const rows = fibuJournal(p).filter(r => r.beleg);
+  const st = document.getElementById("fibuExportStatus");
+  try {
+    await loadScriptOnce("https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js");
+    const zip = new JSZip();
+    for (let i = 0; i < rows.length; i++) {
+      if (st) st.textContent = `Lade Beleg ${i + 1} von ${rows.length} …`;
+      const f = await fetchBelegBlob(rows[i].beleg);
+      zip.file(belegExportName(rows[i]), f.blob);
+    }
+    if (st) st.textContent = "Erstelle ZIP …";
+    const blob = await zip.generateAsync({ type: "blob" });
+    const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = `FiBu_${fileSafe(p.label)}_Belege.zip`;
+    document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
+    if (st) st.textContent = `Fertig: ${rows.length} Belege exportiert.`;
+  } catch (e) { if (st) st.textContent = "Export fehlgeschlagen: " + e.message; }
+}
+
+/* ---------- Rechnung: Zahlungseingang ---------- */
+function renderInvoicePaidCard(inv) {
+  if (inv.type === "lieferschein" || inv.status !== "bezahlt") return "";
+  return `
+  <div class="card no-print" style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;border-left:3px solid var(--sage);">
+    <span style="font-size:13px;font-weight:600;color:var(--sage);">Bezahlt</span>
+    <label style="font-size:13px;color:var(--ink-soft);display:flex;align-items:center;gap:8px;">Zahlungseingang am
+      <input type="date" id="invPaidDate" data-invoice-id="${inv.id}" value="${esc(inv.paidDate || inv.date)}" style="width:auto;"></label>
+    <span class="fb-desc">zählt in der FiBu für diesen Tag</span>
+  </div>`;
+}
+
+/* ---------- Event-Verdrahtung FiBu ---------- */
+function attachFibuHandlers() {
+  document.querySelectorAll("[data-fibu-tab]").forEach(el => el.addEventListener("click", (ev) => {
+    ev.preventDefault();
+    VIEW.fibuTab = el.dataset.fibuTab;
+    if (el.dataset.fibuFilter) VIEW.fibuFilter = el.dataset.fibuFilter;
+    if (VIEW.tab !== "fibu") go("fibu"); else render();
+  }));
+  document.querySelectorAll("[data-fibu-new]").forEach(el => el.addEventListener("click", () => openFibuModal(el.dataset.fibuNew, null)));
+  document.querySelectorAll("[data-fibu-edit]").forEach(el => el.addEventListener("click", () => openFibuModal(null, el.dataset.fibuEdit)));
+  document.querySelectorAll("[data-beleg-view]").forEach(el => el.addEventListener("click", (ev) => {
+    ev.stopPropagation();
+    const e = fibuEntryById(el.dataset.belegView);
+    if (e && e.beleg) openBelegViewer(e.beleg);
+  }));
+  const y = document.getElementById("fibuYear"); if (y) y.onchange = () => { VIEW.fibuYear = y.value; render(); };
+  const pt = document.getElementById("fibuPart"); if (pt) pt.onchange = () => { VIEW.fibuPart = pt.value; render(); };
+  const fl = document.getElementById("fibuFilter"); if (fl) fl.onchange = () => { VIEW.fibuFilter = fl.value; renderInPlace(); };
+  const fs = document.getElementById("fibuSearch"); if (fs) fs.oninput = () => { VIEW.fibuQ = fs.value; renderInPlace(); };
+  const csv = document.getElementById("btnFibuCsv"); if (csv) csv.onclick = exportFibuCsv;
+  const zip = document.getElementById("btnFibuZip"); if (zip) zip.onclick = exportFibuZip;
+  const pe = document.getElementById("btnPrintEuer"); if (pe) pe.onclick = () => window.print();
+  const pd = document.getElementById("invPaidDate");
+  if (pd) pd.onchange = async () => {
+    const inv = invoiceById(pd.dataset.invoiceId);
+    if (!inv || !pd.value) return;
+    inv.paidDate = pd.value;
+    await saveData();
+  };
+}
+function iconEuro(){return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M17.5 6.5A7 7 0 1 0 17.5 17.5" stroke-linecap="round"/><path d="M4.5 10.5h9M4.5 13.5h9" stroke-linecap="round"/></svg>`;}
 
 async function boot() {
   const app = document.getElementById("app");
