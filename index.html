@@ -874,6 +874,11 @@ mark{background:#FFF1A8;color:inherit;border-radius:2px;padding:0 1px;}
   .invoice-items{min-width:0 !important;}
   .invoice-pay-row, .invoice-qr, .invoice-footnote, .invoice-items tr{break-inside:avoid;page-break-inside:avoid;}
 }
+
+/* ===== Linker Rand bündig: alles beginnt bei 25 mm (wie Anschriftfeld nach DIN 5008) ===== */
+.invoice-body{padding-left:25mm;}
+.invoice-items th:first-child, .invoice-items td:first-child{padding-left:0;}
+.invoice-items th:last-child, .invoice-items td:last-child{padding-right:0;}
 </style>
 </head>
 <body>
