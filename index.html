@@ -832,6 +832,48 @@ mark{background:#FFF1A8;color:inherit;border-radius:2px;padding:0 1px;}
 .fb-grid > .card{margin-bottom:16px;}
 @media (max-width:860px){ .fb-grid{grid-template-columns:1fr;} .fb-row{grid-template-columns:1fr 1fr auto;} }
 @media print{ .euer-sheet{box-shadow:none;border:none;} }
+
+/* ===== Seitenleiste gruppiert ===== */
+.nav-grouped{gap:1px;}
+.nav-group{margin-top:8px;}
+.nav-group-head{
+  width:100%;display:flex;align-items:center;gap:8px;background:transparent;border:none;cursor:pointer;
+  font:inherit;font-size:10.5px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:#7A7A7A;
+  padding:8px 12px 6px;border-radius:var(--radius-sm);text-align:left;
+}
+.nav-group-head:hover{color:#D4D4D4;}
+.nav-group-head > span:first-child{flex:1;}
+.nav-chev{width:12px;height:12px;transition:transform .18s ease;flex-shrink:0;}
+.nav-group.open .nav-chev{transform:rotate(90deg);}
+.nav-group-items{display:none;flex-direction:column;gap:1px;}
+.nav-group.open .nav-group-items{display:flex;}
+.nav-group-items .nav-item{padding-left:14px;}
+.nav-sep{height:1px;background:rgba(255,255,255,.08);margin:12px 4px 8px;}
+.nav-badge.soft{background:rgba(255,255,255,.14);color:#E5E5E5;}
+.nav-group-head .nav-badge{font-size:10px;letter-spacing:0;}
+
+/* ===== FiBu: Abschreibung ===== */
+.fb-asset{border:1px solid var(--line);border-radius:var(--radius-sm);padding:10px 12px;margin:0 0 12px;background:var(--panel-2);}
+.fb-asset-opts{display:flex;gap:18px;flex-wrap:wrap;}
+.fb-asset-opts .lh-opt{margin:0;}
+.fb-afa-preview{font-size:12.5px;color:var(--ink-soft);line-height:1.6;}
+.fb-afa-years{display:flex;flex-wrap:wrap;gap:4px 14px;margin-top:4px;font-size:12px;}
+.fb-state{display:inline-block;font-size:10.5px;font-weight:600;border-radius:99px;padding:1px 7px;margin-top:3px;background:var(--panel-2);color:var(--ink-soft);}
+.fb-state.s-voll-abgeschrieben{background:var(--sage-tint);color:var(--sage);}
+.fb-state.s-ausgeschieden{background:var(--rust-tint);color:var(--rust);}
+
+/* ===== Druck: Rechnung/Lieferschein/Mahnung immer auf EINER Seite (wenn sie draufpasst) =====
+   Ursache des Seitenumbruchs: Beim Drucken ist die Seite nur 210 mm (~794 px) breit, dadurch
+   griffen die Handy-Regeln (Innenabstand unten, Scroll-Container um die Positionen). */
+@media print{
+  html, body{width:210mm !important;margin:0 !important;padding:0 !important;background:#fff !important;}
+  #app{display:block !important;min-height:0 !important;}
+  .main{padding:0 !important;margin:0 !important;max-width:none !important;}
+  .invoice-sheet{width:210mm !important;min-height:296mm !important;margin:0 !important;border:none !important;box-shadow:none !important;border-radius:0 !important;}
+  .invoice-body{overflow:visible !important;}
+  .invoice-items{min-width:0 !important;}
+  .invoice-pay-row, .invoice-qr, .invoice-footnote, .invoice-items tr{break-inside:avoid;page-break-inside:avoid;}
+}
 </style>
 </head>
 <body>
@@ -3161,7 +3203,7 @@ qrcode.stringToBytes = qrcode.stringToBytesFuncs['UTF-8'];
    ============================================================ */
 
 const STORAGE_KEY = "freakywood-crm-data-v1";
-const APP_VERSION = "2026.10.30.3"; // Format: JJJJ.MM.TT.N — bei jeder Änderung an dieser Datei hochzählen
+const APP_VERSION = "2026.10.30.4"; // Format: JJJJ.MM.TT.N — bei jeder Änderung an dieser Datei hochzählen
 
 let DB = null;           // { customers, products, invoices, settings }
 let VIEW = { tab: "dashboard", id: null }; // current view state
@@ -3651,12 +3693,7 @@ function renderSidebar() {
       <div class="brand-tag">CRM</div>
     </div>
     <div class="sidebar-search">${iconSearch()}<input type="search" id="sidebarSearch" placeholder="Suchen…  (Strg+K)" value="${esc(VIEW.globalQ || "")}" autocomplete="off"></div>
-    <div class="nav" style="margin-top:16px;">
-      ${items.map(it => `
-        <div class="nav-item ${VIEW.tab === it.tab || (it.also || []).includes(VIEW.tab) ? "active" : ""}" data-nav="${it.tab}">
-          ${it.icon}<span>${it.label}</span>${it.badge ? `<span class="nav-badge">${it.badge}</span>` : ""}
-        </div>`).join("")}
-    </div>
+    ${renderSidebarNav()}
     <button class="new-invoice-btn" data-nav="invoice-new">${iconPlus()} Neue Rechnung</button>
     <div class="sidebar-foot">
       ${CURRENT_USER ? `
@@ -5949,7 +5986,7 @@ function openDeleteOrderModal(id) {
    ============================================================ */
 
 function attachGlobalHandlers() {
-  try { attachGlobalHandlersBase(); } finally { attachExtraHandlers(); attachFibuHandlers(); }
+  try { attachGlobalHandlersBase(); } finally { attachExtraHandlers(); attachFibuHandlers(); attachSidebarNavHandlers(); }
 }
 function attachGlobalHandlersBase() {
   document.querySelectorAll("[data-logout]").forEach(el => {
@@ -7960,6 +7997,88 @@ function applyDocumentTitle() {
 window.addEventListener("beforeprint", applyDocumentTitle);
 
 /* ============================================================
+   SEITENLEISTE: gruppiert & aufklappbar
+   ============================================================ */
+const NAV_GROUPS = [
+  { key: "start", items: [
+    { tab: "dashboard", label: "Auswertungen", icon: () => iconChart() },
+  ] },
+  { key: "verkauf", label: "Verkauf", items: [
+    { tab: "customers", label: "Kunden", icon: () => iconUsers(), also: ["customer-detail"] },
+    { tab: "quotes", label: "Angebote", icon: () => iconQuote(), also: ["quote-detail", "quote-new", "quote-edit"] },
+    { tab: "orders", label: "Aufträge", icon: () => iconClipboard(), also: ["order-detail", "order-new", "order-edit"] },
+    { tab: "invoices", label: "Rechnungen", icon: () => iconDoc(), also: ["invoice-detail", "invoice-new", "invoice-edit"] },
+    { tab: "dunning", label: "Mahnwesen", icon: () => iconBell(), also: ["dunning-letter"], badge: () => DB.invoices.filter(isOverdue).length },
+  ] },
+  { key: "werkstatt", label: "Werkstatt & Lager", items: [
+    { tab: "products", label: "Artikel", icon: () => iconBox() },
+    { tab: "stock", label: "Lager", icon: () => iconWarehouse(), also: ["stock-detail"], badge: () => lowStockItems().length, badgeSoft: true },
+    { tab: "materials", label: "Material", icon: () => iconMaterial(), also: ["material-detail"], badge: () => lowStockMaterials().length, badgeSoft: true },
+  ] },
+  { key: "finanzen", label: "Finanzen", items: [
+    { tab: "fibu", label: "FiBu", icon: () => iconEuro() },
+  ] },
+];
+
+function navOpenGroups() {
+  let s = null;
+  try { s = JSON.parse(localStorage.getItem("fw_nav_open") || "null"); } catch (e) {}
+  return Array.isArray(s) ? s : ["verkauf"];
+}
+function setNavOpenGroups(list) {
+  try { localStorage.setItem("fw_nav_open", JSON.stringify(list)); } catch (e) {}
+}
+function navItemActive(it) { return VIEW.tab === it.tab || (it.also || []).includes(VIEW.tab); }
+
+function renderSidebarNav() {
+  const open = navOpenGroups();
+  const item = (it) => {
+    const b = it.badge ? it.badge() : 0;
+    return `<div class="nav-item ${navItemActive(it) ? "active" : ""}" data-nav="${it.tab}">
+      ${it.icon()}<span>${it.label}</span>${b ? `<span class="nav-badge ${it.badgeSoft ? "soft" : ""}">${b}</span>` : ""}</div>`;
+  };
+  return `
+  <div class="nav nav-grouped" style="margin-top:14px;">
+    ${NAV_GROUPS.map(g => {
+      if (!g.label) return g.items.map(item).join("");
+      const hasActive = g.items.some(navItemActive);
+      const isOpen = hasActive || open.includes(g.key);
+      const badgeSum = g.items.reduce((s, it) => s + (it.badge && !it.badgeSoft ? it.badge() : 0), 0);
+      return `
+      <div class="nav-group ${isOpen ? "open" : ""}">
+        <button type="button" class="nav-group-head" data-nav-group="${g.key}" aria-expanded="${isOpen}">
+          <span>${esc(g.label)}</span>
+          ${!isOpen && badgeSum ? `<span class="nav-badge">${badgeSum}</span>` : ""}
+          <svg class="nav-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m9 6 6 6-6 6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </button>
+        <div class="nav-group-items">${g.items.map(item).join("")}</div>
+      </div>`;
+    }).join("")}
+    <div class="nav-sep"></div>
+    ${item({ tab: "settings", label: "Einstellungen", icon: () => iconGear() })}
+  </div>`;
+}
+
+function attachSidebarNavHandlers() {
+  document.querySelectorAll("[data-nav-group]").forEach(btn => btn.addEventListener("click", () => {
+    const key = btn.dataset.navGroup;
+    const grp = btn.closest(".nav-group");
+    const nowOpen = !grp.classList.contains("open");
+    grp.classList.toggle("open", nowOpen);
+    btn.setAttribute("aria-expanded", String(nowOpen));
+    const list = navOpenGroups().filter(k => k !== key);
+    if (nowOpen) list.push(key);
+    setNavOpenGroups(list);
+    // Badge im Kopf nur zeigen, wenn zu
+    const g = NAV_GROUPS.find(x => x.key === key);
+    const sum = g ? g.items.reduce((s, it) => s + (it.badge && !it.badgeSoft ? it.badge() : 0), 0) : 0;
+    const old = btn.querySelector(".nav-badge");
+    if (old) old.remove();
+    if (!nowOpen && sum) btn.querySelector("span").insertAdjacentHTML("afterend", `<span class="nav-badge">${sum}</span>`);
+  }));
+}
+
+/* ============================================================
    FIBU – Einnahmen/Ausgaben, Belege, Auswertungen, Export
    ------------------------------------------------------------
    Daten: DB.fibu = [{ id, kind: "ausgabe"|"einnahme", number, date,
@@ -8038,8 +8157,54 @@ function fibuPeriod() {
 }
 function inPeriod(d, p) { return !!d && d >= p.from && d <= p.to; }
 
+/* ---------- Abschreibung (AfA), linear, monatsgenau ----------
+   e.asset = { years }  -> Anlagegut, wird ab dem Anschaffungsmonat über
+   years*12 Monate abgeschrieben. e.disposalDate -> ausgeschieden (Verkauf/
+   Verschrottung): AfA endet in diesem Monat, Restbuchwert wird dann Aufwand. */
+const AFA_PRESETS = [
+  { years: 1, label: "Computer, Laptop, Software (1 Jahr, voll im Kaufjahr)" },
+  { years: 3, label: "3 Jahre" },
+  { years: 5, label: "5 Jahre" },
+  { years: 6, label: "PKW (6 Jahre)" },
+  { years: 7, label: "7 Jahre" },
+  { years: 10, label: "10 Jahre" },
+  { years: 13, label: "Büromöbel (13 Jahre)" },
+];
+function isAsset(e) { return !!(e && e.kind === "ausgabe" && e.asset && Number(e.asset.years) > 0); }
+function monthIdx(iso) { return Number(iso.slice(0, 4)) * 12 + Number(iso.slice(5, 7)) - 1; }
+function idxToYm(i) { return `${Math.floor(i / 12)}-${String(i % 12 + 1).padStart(2, "0")}`; }
+function assetPlan(e) {
+  const ak = Number(e.amount) || 0;
+  const start = monthIdx(e.date);
+  // 1 Jahr (Computer/Software, BMF-Regel): komplett im Anschaffungsjahr
+  const n = Number(e.asset.years) === 1 ? 12 - (start % 12) : Math.round(Number(e.asset.years) * 12);
+  const end = start + n - 1;
+  const disp = e.disposalDate ? monthIdx(e.disposalDate) : null;
+  const cum = k => k <= 0 ? 0 : (k >= n ? ak : Math.round(ak * k / n * 100) / 100); // AfA nach k Monaten
+  return { ak, n, start, end, disp, cum };
+}
+// AfA im Zeitraum [from,to] (inkl.), Restbuchwert-Abgang bei Ausscheiden
+function assetAmounts(e, p) {
+  const pl = assetPlan(e);
+  const a = monthIdx(p.from), b = monthIdx(p.to);
+  const stop = pl.disp != null ? Math.min(pl.end, pl.disp) : pl.end;
+  const lo = Math.max(a, pl.start), hi = Math.min(b, stop);
+  const afa = hi >= lo ? pl.cum(hi - pl.start + 1) - pl.cum(lo - pl.start) : 0;
+  let abgang = 0;
+  if (pl.disp != null && pl.disp >= a && pl.disp <= b) abgang = Math.max(0, pl.ak - pl.cum(Math.min(pl.disp, pl.end) - pl.start + 1));
+  return { afa: Math.round(afa * 100) / 100, abgang: Math.round(abgang * 100) / 100 };
+}
+function assetBookValue(e, iso) {
+  const pl = assetPlan(e);
+  const m = monthIdx(iso);
+  if (pl.disp != null && m >= pl.disp) return 0;
+  return Math.round((pl.ak - pl.cum(Math.min(m, pl.end) - pl.start + 1)) * 100) / 100;
+}
+function assetFullyDepreciatedYm(e) { return idxToYm(assetPlan(e).end); }
+
 /* ---------- Journal: alle Buchungen eines Zeitraums ---------- */
-function fibuJournal(p) {
+function fibuJournal(p, mode) {
+  const result = mode === "result";   // "result": Gewinnermittlung (AfA statt Anschaffungspreis)
   const rows = [];
   DB.invoices.forEach(i => {
     const d = invoicePaidDate(i);
@@ -8050,10 +8215,19 @@ function fibuJournal(p) {
       payment: i.paymentMethod === "bar" ? "bar" : "ueberweisung", beleg: null, hasDoc: true });
   });
   fibuEntries().forEach(e => {
+    if (result && isAsset(e)) {
+      const am = assetAmounts(e, p);
+      const d = e.date > p.from ? e.date : p.from;
+      if (am.afa) rows.push({ src: "afa", id: e.id, kind: "ausgabe", date: d, number: e.number, partner: e.partner,
+        description: `AfA ${e.description}`, category: "afa", catLabel: "Abschreibungen (AfA)", amount: am.afa, beleg: e.beleg || null, hasDoc: true });
+      if (am.abgang) rows.push({ src: "afa", id: e.id, kind: "ausgabe", date: e.disposalDate, number: e.number, partner: e.partner,
+        description: `Restbuchwert ${e.description} (ausgeschieden)`, category: "abgang", catLabel: "Restbuchwert ausgeschiedener Anlagen", amount: am.abgang, beleg: e.beleg || null, hasDoc: true });
+      return;
+    }
     if (!inPeriod(e.date, p)) return;
     rows.push({ src: "fibu", id: e.id, kind: e.kind, date: e.date, number: e.number, partner: e.partner,
-      description: e.description, category: e.category, catLabel: fibuCatLabel(e.category),
-      amount: Number(e.amount) || 0, payment: e.payment, beleg: e.beleg || null, hasDoc: !!e.beleg });
+      description: e.description, category: e.category, catLabel: fibuCatLabel(e.category) + (isAsset(e) ? " (Anlagegut)" : ""),
+      amount: Number(e.amount) || 0, payment: e.payment, beleg: e.beleg || null, hasDoc: !!e.beleg, asset: isAsset(e) });
   });
   rows.sort((a, b) => a.date.localeCompare(b.date) || String(a.number).localeCompare(String(b.number)));
   return rows;
@@ -8079,7 +8253,7 @@ function renderFibu() {
   </div>
   <div class="toolbar fibu-toolbar no-print">
     <div class="seg">
-      ${[["uebersicht", "Auswertung"], ["buchungen", "Buchungen"], ["euer", "EÜR-Übersicht"], ["export", "Export"]].map(([k, l]) =>
+      ${[["uebersicht", "Auswertung"], ["buchungen", "Buchungen"], ["anlagen", "Anlagen"], ["euer", "EÜR-Übersicht"], ["export", "Export"]].map(([k, l]) =>
         `<button class="seg-btn ${sub === k ? "active" : ""}" data-fibu-tab="${k}">${l}</button>`).join("")}
     </div>
     <select class="filter-select" id="fibuYear">${years.map(y => `<option ${y === p.year ? "selected" : ""}>${y}</option>`).join("")}</select>
@@ -8089,7 +8263,7 @@ function renderFibu() {
       ${months.map((m, i) => `<option value="m${String(i + 1).padStart(2, "0")}" ${p.part === "m" + String(i + 1).padStart(2, "0") ? "selected" : ""}>${m}</option>`).join("")}
     </select>
   </div>
-  ${sub === "buchungen" ? renderFibuList(p) : sub === "euer" ? renderFibuEuer(p) : sub === "export" ? renderFibuExport(p) : renderFibuOverview(p)}
+  ${sub === "buchungen" ? renderFibuList(p) : sub === "anlagen" ? renderFibuAssets(p) : sub === "euer" ? renderFibuEuer(p) : sub === "export" ? renderFibuExport(p) : renderFibuOverview(p)}
   `;
 }
 
@@ -8099,17 +8273,17 @@ function fibuBar(label, value, max, extra) {
 }
 
 function renderFibuOverview(p) {
-  const rows = fibuJournal(p);
+  const rows = fibuJournal(p, "result");
   const inc = rows.filter(r => r.kind === "einnahme"), exp = rows.filter(r => r.kind === "ausgabe");
   const sInc = sumBy(inc), sExp = sumBy(exp), profit = sInc - sExp;
-  const noBeleg = exp.filter(r => !r.beleg);
-  const gwg = exp.filter(r => r.category === "anschaffung" && r.amount > GWG_LIMIT);
+  const noBeleg = exp.filter(r => r.src === "fibu" && !r.beleg);
+  const gwg = fibuEntries().filter(e => e.kind === "ausgabe" && e.category === "anschaffung" && Number(e.amount) > GWG_LIMIT && !isAsset(e) && inPeriod(e.date, p));
   const open = DB.invoices.filter(i => (i.type || "rechnung") === "rechnung" && i.status === "offen");
   const sOpen = open.reduce((s, i) => s + invoiceTotal(i), 0);
 
   // Kleinunternehmer-Grenze (immer ganzes Jahr)
   const y = Number(p.year);
-  const yearInc = (yy) => sumBy(fibuJournal({ from: `${yy}-01-01`, to: `${yy}-12-31` }).filter(r => r.kind === "einnahme"));
+  const yearInc = (yy) => sumBy(fibuJournal({ from: `${yy}-01-01`, to: `${yy}-12-31` }, "result").filter(r => r.kind === "einnahme"));
   const prevInc = yearInc(y - 1), curInc = yearInc(y);
   const kuOn = !!(DB.settings.company && DB.settings.company.kleinunternehmer);
 
@@ -8133,7 +8307,7 @@ function renderFibuOverview(p) {
   ${(noBeleg.length || gwg.length) ? `
   <div class="card fibu-hints">
     ${noBeleg.length ? `<div>${iconAlert()} <b>${noBeleg.length} Ausgabe${noBeleg.length > 1 ? "n" : ""} ohne Beleg</b> (${fmtCurrency(sumBy(noBeleg))}) – <a href="#" data-fibu-tab="buchungen" data-fibu-filter="ohnebeleg">anzeigen</a></div>` : ""}
-    ${gwg.length ? `<div>${iconAlert()} <b>${gwg.length} Anschaffung${gwg.length > 1 ? "en" : ""} über ${GWG_LIMIT} €</b> – wird ggf. über mehrere Jahre abgeschrieben, bitte mit dem Steuerberater klären.</div>` : ""}
+    ${gwg.length ? `<div>${iconAlert()} <b>${gwg.length} Anschaffung${gwg.length > 1 ? "en" : ""} über ${GWG_LIMIT} € ohne Abschreibung</b> – muss in der Regel über mehrere Jahre abgeschrieben werden: ${gwg.map(e => `<a href="#" data-fibu-edit="${e.id}">${esc(e.number)}</a>`).join(", ")} öffnen und „Über Jahre abschreiben“ wählen.</div>` : ""}
   </div>` : ""}
 
   <div class="card">
@@ -8169,10 +8343,12 @@ function drawFibuChart() {
   if (!el || typeof Chart === "undefined") return;
   const p = fibuPeriod();
   const inc = Array(12).fill(0), exp = Array(12).fill(0);
-  fibuJournal({ from: `${p.year}-01-01`, to: `${p.year}-12-31` }).forEach(r => {
-    const m = Number(r.date.slice(5, 7)) - 1;
-    if (r.kind === "einnahme") inc[m] += r.amount; else exp[m] += r.amount;
-  });
+  for (let m = 0; m < 12; m++) {
+    const mm = String(m + 1).padStart(2, "0");
+    fibuJournal({ from: `${p.year}-${mm}-01`, to: `${p.year}-${mm}-31` }, "result").forEach(r => {
+      if (r.kind === "einnahme") inc[m] += r.amount; else exp[m] += r.amount;
+    });
+  }
   const profit = inc.map((v, i) => v - exp[i]);
   if (drawFibuChart._c) { try { drawFibuChart._c.destroy(); } catch (e) {} }
   drawFibuChart._c = new Chart(el, {
@@ -8237,11 +8413,13 @@ function renderFibuList(p) {
 }
 
 function renderFibuEuer(p) {
-  const rows = fibuJournal(p);
+  const rows = fibuJournal(p, "result");
   const inc = rows.filter(r => r.kind === "einnahme"), exp = rows.filter(r => r.kind === "ausgabe");
   const incRech = sumBy(inc.filter(r => r.src === "rechnung"));
   const incOther = FIBU_INCOME_CATS.map(c => [c.label, sumBy(inc.filter(r => r.category === c.key))]).filter(x => x[1]);
-  const expCats = FIBU_EXPENSE_CATS.map(c => [c.label, sumBy(exp.filter(r => r.category === c.key))]);
+  const expCats = FIBU_EXPENSE_CATS.map(c => [c.key === "anschaffung" ? c.label + " (sofort abgesetzt)" : c.label, sumBy(exp.filter(r => r.category === c.key))])
+    .concat([["Abschreibungen (AfA)", sumBy(exp.filter(r => r.category === "afa"))]])
+    .concat(exp.some(r => r.category === "abgang") ? [["Restbuchwert ausgeschiedener Anlagen", sumBy(exp.filter(r => r.category === "abgang"))]] : []);
   const sInc = sumBy(inc), sExp = sumBy(exp);
   const comp = DB.settings.company;
   return `
@@ -8260,7 +8438,7 @@ function renderFibuEuer(p) {
         <tr class="euer-total"><td>${sInc - sExp >= 0 ? "Überschuss (Gewinn)" : "Verlust"}</td><td class="num">${fmtCurrency(sInc - sExp)}</td></tr>
       </tbody>
     </table>
-    <p class="fb-note">${comp.kleinunternehmer ? "Kleinunternehmer nach §19 UStG – alle Beträge brutto, keine Umsatzsteuer/Vorsteuer. " : ""}Vereinfachte Übersicht nach dem Zufluss-/Abflussprinzip auf Basis der erfassten Daten. Ersetzt nicht die Anlage EÜR; Abschreibungen (AfA) für Anschaffungen über ${GWG_LIMIT} € sind nicht berücksichtigt.</p>
+    <p class="fb-note">${comp.kleinunternehmer ? "Kleinunternehmer nach §19 UStG – alle Beträge brutto, keine Umsatzsteuer/Vorsteuer. " : ""}Vereinfachte Übersicht nach dem Zufluss-/Abflussprinzip auf Basis der erfassten Daten. Anlagegüter sind linear und monatsgenau abgeschrieben (siehe Anlagen). Ersetzt nicht die Anlage EÜR.</p>
   </div>`;
 }
 
@@ -8274,6 +8452,7 @@ function renderFibuExport(p) {
     <div class="head-actions" style="justify-content:flex-start;flex-wrap:wrap;">
       <button class="btn btn-primary" id="btnFibuCsv">Buchungsliste (Excel/CSV)</button>
       <button class="btn" id="btnFibuZip" ${withBeleg ? "" : "disabled"}>Alle Belege als ZIP</button>
+      <button class="btn" id="btnFibuAssetsCsv">Anlagenverzeichnis (CSV)</button>
       <button class="btn" data-fibu-tab="euer">EÜR-Übersicht drucken</button>
     </div>
     <div id="fibuExportStatus" class="fb-note"></div>
@@ -8314,6 +8493,20 @@ function openFibuModal(kind, editId) {
         <label>Beleg (Foto oder PDF)</label>
         <div class="fb-beleg-box" id="fbBelegBox">${renderBelegBox()}</div>
         <input type="file" id="fb_file" accept="image/*,application/pdf" style="display:none;">
+      </div>
+      <div id="fbAssetBox" class="fb-asset" style="display:none;">
+        <div class="fb-asset-opts">
+          <label class="lh-opt"><input type="radio" name="fbAfa" value="sofort" ${e && isAsset(e) ? "" : "checked"}> Sofort als Ausgabe (bis ${GWG_LIMIT} €)</label>
+          <label class="lh-opt"><input type="radio" name="fbAfa" value="afa" ${e && isAsset(e) ? "checked" : ""}> Über Jahre abschreiben (Anlagegut)</label>
+        </div>
+        <div id="fbAfaFields" class="form-grid" style="display:none;margin-top:8px;">
+          <div class="field"><label>Nutzungsdauer (Jahre)</label>
+            <div style="display:flex;gap:6px;"><input type="number" id="fb_years" min="1" max="50" step="1" value="${e && e.asset ? Number(e.asset.years) : ""}" placeholder="z. B. 7" style="max-width:90px;">
+            <select id="fb_preset" style="flex:1;"><option value="">Vorschlag wählen…</option>${AFA_PRESETS.map(x => `<option value="${x.years}">${esc(x.label)}</option>`).join("")}</select></div>
+            <div class="hint">Nach amtlicher AfA-Tabelle – im Zweifel Steuerberater fragen.</div></div>
+          <div class="field"><label>Ausgeschieden am (Verkauf/Entsorgung)</label><input type="date" id="fb_disposal" value="${esc(e && e.disposalDate || "")}"><div class="hint">Leer lassen, solange das Gerät genutzt wird.</div></div>
+          <div class="field" style="grid-column:1/-1;margin:0;"><div id="fbAfaPreview" class="fb-afa-preview"></div></div>
+        </div>
       </div>
       <div id="fbGwgHint" class="hint" style="color:var(--rust);"></div>
       <div id="fibuFormError" class="lock-error" style="text-align:left;"></div>
@@ -8361,11 +8554,40 @@ function wireFibuModal(kind, e) {
     rewire();
   };
   const amount = document.getElementById("fb_amount"), cat = document.getElementById("fb_cat");
+  const assetBox = document.getElementById("fbAssetBox"), afaFields = document.getElementById("fbAfaFields");
+  const years = document.getElementById("fb_years"), preset = document.getElementById("fb_preset");
+  let touchedMode = !!e;
+  const afaMode = () => (document.querySelector('input[name="fbAfa"]:checked') || {}).value;
   const gwg = () => {
-    document.getElementById("fbGwgHint").textContent = (kind === "ausgabe" && Number(amount.value) > GWG_LIMIT && cat.value === "anschaffung")
-      ? `Über ${GWG_LIMIT} €: wird voraussichtlich über mehrere Jahre abgeschrieben – Beleg unbedingt aufheben und dem Steuerberater melden.` : "";
+    const isAnsch = kind === "ausgabe" && cat.value === "anschaffung";
+    assetBox.style.display = isAnsch ? "" : "none";
+    if (isAnsch && !touchedMode) {
+      const over = Number(amount.value) > GWG_LIMIT;
+      document.querySelector(`input[name="fbAfa"][value="${over ? "afa" : "sofort"}"]`).checked = true;
+    }
+    const afa = isAnsch && afaMode() === "afa";
+    afaFields.style.display = afa ? "" : "none";
+    document.getElementById("fbGwgHint").textContent = (isAnsch && !afa && Number(amount.value) > GWG_LIMIT)
+      ? `Über ${GWG_LIMIT} € muss in der Regel über mehrere Jahre abgeschrieben werden.` : "";
+    const prev = document.getElementById("fbAfaPreview");
+    const y = Number(years.value), ak = Number(amount.value), d = document.getElementById("fb_date").value;
+    if (afa && y > 0 && ak > 0 && d) {
+      const tmp = { kind: "ausgabe", amount: ak, date: d, asset: { years: y }, disposalDate: document.getElementById("fb_disposal").value || null };
+      const y0 = Number(d.slice(0, 4));
+      const lines = [];
+      for (let yy = y0; yy <= Number(assetFullyDepreciatedYm(tmp).slice(0, 4)) && lines.length < 8; yy++) {
+        const am = assetAmounts(tmp, { from: `${yy}-01-01`, to: `${yy}-12-31` });
+        if (am.afa || am.abgang) lines.push(`<span>${yy}: <b>${fmtCurrency(am.afa + am.abgang)}</b></span>`);
+      }
+      const [ey, em] = assetFullyDepreciatedYm(tmp).split("-");
+      prev.innerHTML = `${y === 1 ? "Komplett im Kaufjahr abgeschrieben" : `Abschreibung pro Jahr: <b>${fmtCurrency(ak / y)}</b>`} · voll abgeschrieben Ende <b>${em}/${ey}</b><div class="fb-afa-years">${lines.join("")}${lines.length >= 8 ? "<span>…</span>" : ""}</div>`;
+    } else prev.innerHTML = afa ? "Nutzungsdauer eintragen, dann erscheint hier der Abschreibungsplan." : "";
   };
-  amount.oninput = gwg; cat.onchange = gwg; gwg();
+  amount.oninput = gwg; cat.onchange = gwg; years.oninput = gwg;
+  document.getElementById("fb_date").onchange = gwg; document.getElementById("fb_disposal").onchange = gwg;
+  preset.onchange = () => { if (preset.value) years.value = preset.value; preset.value = ""; gwg(); };
+  document.querySelectorAll('input[name="fbAfa"]').forEach(r => r.onchange = () => { touchedMode = true; gwg(); });
+  gwg();
   document.getElementById("btnCancelModal").onclick = closeModal;
 
   const collect = () => {
@@ -8380,6 +8602,13 @@ function wireFibuModal(kind, e) {
       note: document.getElementById("fb_note").value.trim(),
     };
     if (!v.date || !v.partner || !v.description || !(v.amount > 0)) return { err: "Bitte Datum, Betrag, Partner und Beschreibung ausfüllen." };
+    if (kind === "ausgabe" && v.category === "anschaffung" && afaMode() === "afa") {
+      const y = Math.round(Number(years.value));
+      if (!(y >= 1 && y <= 50)) return { err: "Bitte die Nutzungsdauer in Jahren angeben." };
+      v.asset = { years: y };
+      v.disposalDate = document.getElementById("fb_disposal").value || null;
+      if (v.disposalDate && v.disposalDate < v.date) return { err: "„Ausgeschieden am“ liegt vor dem Kaufdatum." };
+    } else { v.asset = null; v.disposalDate = null; }
     if (FIBU_PENDING_BELEG && FIBU_PENDING_BELEG.uploading) return { err: "Bitte warten, bis der Beleg hochgeladen ist." };
     return { v };
   };
@@ -8537,6 +8766,7 @@ function attachFibuHandlers() {
   const fs = document.getElementById("fibuSearch"); if (fs) fs.oninput = () => { VIEW.fibuQ = fs.value; renderInPlace(); };
   const csv = document.getElementById("btnFibuCsv"); if (csv) csv.onclick = exportFibuCsv;
   const zip = document.getElementById("btnFibuZip"); if (zip) zip.onclick = exportFibuZip;
+  const acsv = document.getElementById("btnFibuAssetsCsv"); if (acsv) acsv.onclick = exportAssetsCsv;
   const pe = document.getElementById("btnPrintEuer"); if (pe) pe.onclick = () => window.print();
   const pd = document.getElementById("invPaidDate");
   if (pd) pd.onchange = async () => {
@@ -8547,6 +8777,59 @@ function attachFibuHandlers() {
   };
 }
 function iconEuro(){return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M17.5 6.5A7 7 0 1 0 17.5 17.5" stroke-linecap="round"/><path d="M4.5 10.5h9M4.5 13.5h9" stroke-linecap="round"/></svg>`;}
+
+
+/* ---------- Anlagenverzeichnis ---------- */
+function renderFibuAssets(p) {
+  const list = fibuEntries().filter(isAsset).sort((a, b) => a.date.localeCompare(b.date));
+  const today = todayISO();
+  const yp = { from: `${p.year}-01-01`, to: `${p.year}-12-31` };
+  const rowsHtml = list.map(e => {
+    const pl = assetPlan(e);
+    const [ey, em] = assetFullyDepreciatedYm(e).split("-");
+    const am = assetAmounts(e, yp);
+    const bvEnd = assetBookValue(e, `${p.year}-12-31`);
+    const done = e.disposalDate ? "ausgeschieden" : (monthIdx(today) > pl.end ? "voll abgeschrieben" : "läuft");
+    return `<tr class="clickable" data-fibu-edit="${e.id}">
+      <td><b>${esc(e.description)}</b><div class="fb-desc">${esc(e.number)} · ${esc(e.partner)}</div></td>
+      <td>${fmtDate(e.date)}</td>
+      <td class="num">${fmtCurrency(pl.ak)}</td>
+      <td class="num">${Number(e.asset.years)} J.</td>
+      <td class="num">${fmtCurrency(am.afa + am.abgang)}</td>
+      <td class="num">${fmtCurrency(bvEnd)}</td>
+      <td>${em}/${ey}<div><span class="fb-state s-${done.replace(/\s+/g, "-")}">${done}${e.disposalDate ? " " + fmtDate(e.disposalDate) : ""}</span></div></td>
+    </tr>`;
+  }).join("");
+  const sumAfa = list.reduce((s, e) => { const a = assetAmounts(e, yp); return s + a.afa + a.abgang; }, 0);
+  const sumBv = list.reduce((s, e) => s + assetBookValue(e, `${p.year}-12-31`), 0);
+  return `
+  <div class="card" style="padding:0;">
+    <div class="gs-head" style="border-radius:var(--radius) var(--radius) 0 0;">Anlagenverzeichnis · Werte für ${esc(p.year)} <span>${list.length}</span></div>
+    <table>
+      <thead><tr><th>Anlagegut</th><th>Gekauft</th><th class="num">Kaufpreis</th><th class="num">Nutzung</th><th class="num">AfA ${esc(p.year)}</th><th class="num">Restwert 31.12.</th><th>Abgeschrieben bis</th></tr></thead>
+      <tbody>${list.length ? rowsHtml : `<tr class="empty-row"><td colspan="7">Noch keine Anlagegüter. Eine Ausgabe in der Kategorie „Maschinen &amp; Anschaffungen“ mit „Über Jahre abschreiben“ erscheint hier.</td></tr>`}</tbody>
+      ${list.length ? `<tfoot><tr><td colspan="4" style="text-align:right;font-weight:600;">Summe</td><td class="num" style="font-weight:600;">${fmtCurrency(sumAfa)}</td><td class="num" style="font-weight:600;">${fmtCurrency(sumBv)}</td><td></td></tr></tfoot>` : ""}
+    </table>
+  </div>
+  <p class="fb-note">Lineare Abschreibung, monatsgenau ab dem Kaufmonat. Der Kaufpreis zählt im Kaufjahr nicht als Ausgabe, sondern verteilt sich über die Nutzungsdauer. Wird ein Gerät verkauft oder entsorgt, „Ausgeschieden am“ eintragen – der Restwert wird dann in diesem Jahr als Aufwand gebucht (ein Verkaufserlös gehört als Einnahme erfasst). Andere Methoden (z. B. degressive AfA, Sonderabschreibung) bitte mit dem Steuerberater klären.</p>`;
+}
+
+function exportAssetsCsv() {
+  const p = fibuPeriod();
+  const yp = { from: `${p.year}-01-01`, to: `${p.year}-12-31` };
+  const n = v => Number(v).toFixed(2).replace(".", ",");
+  const head = ["Belegnummer", "Anlagegut", "Lieferant", "Kaufdatum", "Kaufpreis (EUR)", "Nutzungsdauer (Jahre)", "AfA pro Jahr", `Restwert 01.01.${p.year}`, `AfA ${p.year}`, `Restwert 31.12.${p.year}`, "voll abgeschrieben", "ausgeschieden am"];
+  const lines = [head.join(";")].concat(fibuEntries().filter(isAsset).sort((a, b) => a.date.localeCompare(b.date)).map(e => {
+    const am = assetAmounts(e, yp);
+    const startBv = e.date >= yp.from ? 0 : assetBookValue(e, `${Number(p.year) - 1}-12-31`);
+    const [ey, em] = assetFullyDepreciatedYm(e).split("-");
+    return [csvCell(e.number), csvCell(e.description), csvCell(e.partner), fmtDate(e.date), n(e.amount), e.asset.years, n(Number(e.amount) / e.asset.years),
+      n(startBv), n(am.afa + am.abgang), n(assetBookValue(e, `${p.year}-12-31`)), `${em}/${ey}`, e.disposalDate ? fmtDate(e.disposalDate) : ""].join(";");
+  }));
+  const blob = new Blob(["\uFEFF" + lines.join("\r\n")], { type: "text/csv;charset=utf-8" });
+  const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = `Anlagenverzeichnis_${p.year}.csv`;
+  document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 500);
+}
 
 async function boot() {
   const app = document.getElementById("app");
