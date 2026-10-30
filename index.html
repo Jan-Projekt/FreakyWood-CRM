@@ -3133,7 +3133,7 @@ qrcode.stringToBytes = qrcode.stringToBytesFuncs['UTF-8'];
    ============================================================ */
 
 const STORAGE_KEY = "freakywood-crm-data-v1";
-const APP_VERSION = "2026.10.30.1"; // Format: JJJJ.MM.TT.N — bei jeder Änderung an dieser Datei hochzählen
+const APP_VERSION = "2026.10.30.2"; // Format: JJJJ.MM.TT.N — bei jeder Änderung an dieser Datei hochzählen
 
 let DB = null;           // { customers, products, invoices, settings }
 let VIEW = { tab: "dashboard", id: null }; // current view state
@@ -6555,6 +6555,7 @@ function runPostRenderHooks() {
   if (VIEW.tab === "dashboard") drawMonthChart();
   if (VIEW.tab === "settings") refreshAdminUsers();
   showRemoteBanner();
+  applyDocumentTitle();
 }
 
 /* ============================================================
@@ -7075,6 +7076,7 @@ async function doLogout() {
   showRemoteBanner();
   stopPolling();
   VIEW = { tab: "dashboard", id: null };
+  document.title = "FreakyWood CRM";
   render();
   if (tok) { try { await rpc("crm_logout", { p_token: tok }); } catch (e) {} }
 }
@@ -7874,6 +7876,33 @@ function installGlobalKeys() {
     else if (e.key === "/" && !typing) { e.preventDefault(); go("search"); }
   });
 }
+
+/* ============================================================
+   PDF-DATEINAME = Dokumentnummer
+   Browser schlagen beim "Als PDF speichern" den Seitentitel als
+   Dateinamen vor -> Titel passend zum geöffneten Dokument setzen.
+   ============================================================ */
+function documentTitleForView() {
+  const safe = s => String(s || "").replace(/[\\/:*?"<>|]+/g, "-").trim();
+  if (!DB || !APP_UNLOCKED) return null;
+  if (VIEW.tab === "invoice-detail") {
+    const inv = invoiceById(VIEW.id);
+    if (inv) return `${inv.type === "lieferschein" ? "Lieferschein" : "Rechnung"}_${safe(inv.number)}`;
+  }
+  if (VIEW.tab === "dunning-letter") {
+    const inv = invoiceById(VIEW.id);
+    const list = inv ? invDunning(inv) : [];
+    const idx = (VIEW.dunIdx != null && list[VIEW.dunIdx]) ? VIEW.dunIdx : list.length - 1;
+    if (inv && list[idx]) return `${safe(dunningLevelName(list[idx].level)).replace(/\s+/g, "_")}_Rechnung_${safe(inv.number)}`;
+  }
+  if (VIEW.tab === "quote-detail") { const q = quoteById(VIEW.id); if (q) return `Angebot_${safe(q.number)}`; }
+  if (VIEW.tab === "order-detail") { const o = orderById(VIEW.id); if (o) return `Auftrag_${safe(o.number)}`; }
+  return null;
+}
+function applyDocumentTitle() {
+  document.title = documentTitleForView() || "FreakyWood CRM";
+}
+window.addEventListener("beforeprint", applyDocumentTitle);
 
 async function boot() {
   const app = document.getElementById("app");
