@@ -3237,7 +3237,7 @@ qrcode.stringToBytes = qrcode.stringToBytesFuncs['UTF-8'];
    ============================================================ */
 
 const STORAGE_KEY = "freakywood-crm-data-v1";
-const APP_VERSION = "2026.11.17.1"; // Format: JJJJ.MM.TT.N — bei jeder Änderung an dieser Datei hochzählen
+const APP_VERSION = "2026.11.17.2"; // Format: JJJJ.MM.TT.N — bei jeder Änderung an dieser Datei hochzählen
 
 let DB = null;           // { customers, products, invoices, settings }
 let VIEW = { tab: "dashboard", id: null }; // current view state
@@ -7782,6 +7782,11 @@ function downloadJson(obj, filename) {
 
 function attachExtraHandlers() {
   wireInvoiceObjectCard();
+  // Angebote in der Liste anklickbar (der Klick-Handler fehlte bisher)
+  document.querySelectorAll("[data-goto-quote]").forEach(el => el.addEventListener("click", (ev) => {
+    ev.preventDefault();
+    go("quote-detail", el.dataset.gotoQuote);
+  }));
   // --- Globale Suche ---
   const sideSearch = document.getElementById("sidebarSearch");
   if (sideSearch) {
@@ -8238,7 +8243,7 @@ function letterGreeting(c) {
   const isOrg = !c || !!c.company || /\b(GmbH|AG|KG|OHG|GbR|UG|e\.\s?V\.|mbH|Hotel|Verband|Landkreis|Stadt|Gemeinde|Verein|Schule|Betrieb)\b/i.test(c.name || "");
   return isOrg ? "Sehr geehrte Damen und Herren," : `Guten Tag ${esc(c.name)},`;
 }
-function quoteValidUntil(q) { return q.validUntil || addDaysISO(q.date, 30); }
+function quoteValidUntil(q) { return q.validUntil || (/^\d{4}-\d{2}-\d{2}$/.test(q.date || "") ? addDaysISO(q.date, 30) : ""); }
 
 function renderQuoteSheet(quote, c) {
   const comp = DB.settings.company;
